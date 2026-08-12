@@ -20,6 +20,8 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   isConfigured: boolean;
+  authNotification: { type: 'success' | 'info' | 'error'; message: string } | null;
+  clearAuthNotification: () => void;
   signUpAttendee: (data: SignUpData) => Promise<{ success: boolean; requiresEmailVerification?: boolean; error?: string }>;
   signIn: (data: SignInData) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
@@ -36,6 +38,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<AuthUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [authNotification, setAuthNotification] = useState<{ type: 'success' | 'info' | 'error'; message: string } | null>(null);
+
+  const clearAuthNotification = () => setAuthNotification(null);
 
   // Helper to fetch profile from public.profiles
   const fetchUserProfile = async (supabaseUser: User): Promise<AuthUser> => {
@@ -55,6 +60,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           fullName = profile.full_name || fullName;
           phoneNumber = profile.phone_number || phoneNumber;
           role = (profile.role as AuthUser['role']) || role;
+          
+          // Ensure is_email_verified in profiles is synced if Supabase confirmed email
+          if (supabaseUser.email_confirmed_at && !profile.is_email_verified) {
+            await supabase.from('profiles').update({ is_email_verified: true }).eq('id', supabaseUser.id);
+          }
         } else {
           // Create profile if missing
           await supabase.from('profiles').insert({
@@ -92,6 +102,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let mounted = true;
 
     async function initAuth() {
+      // Check URL parameters for email verification or password reset callback
+      const href = window.location.href;
+      const isAuthCallback = href.includes('type=signup') || href.includes('type=recovery') || href.includes('/auth/callback') || href.includes('access_token=');
+
       if (isSupabaseConfigured) {
         try {
           const { data: { session: currentSession } } = await supabase.auth.getSession();
@@ -100,6 +114,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (currentSession?.user) {
               const authUser = await fetchUserProfile(currentSession.user);
               setUser(authUser);
+
+              if (isAuthCallback) {
+                if (href.includes('type=recovery')) {
+                  setAuthNotification({
+                    type: 'info',
+                    message: 'Authenticated via password reset link. Please update your password below.',
+                  });
+                } else {
+                  setAuthNotification({
+                    type: 'success',
+                    message: 'Your email address has been verified successfully! You are now logged in.',
+                  });
+                }
+                // Clean up URL bar to avoid clutter
+                window.history.replaceState({}, document.title, window.location.pathname);
+              }
             }
           }
         } catch (e) {
@@ -131,6 +161,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (newSession?.user) {
           const authUser = await fetchUserProfile(newSession.user);
           setUser(authUser);
+
+          // Handle verification callback events
+          if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+            const href = window.location.href;
+            if (href.includes('type=signup') || href.includes('/auth/callback')) {
+              setAuthNotification({
+                type: 'success',
+                message: 'Your email address has been verified successfully! Welcome to Ticketa.',
+              });
+              window.history.replaceState({}, document.title, window.location.pathname);
+            } else if (href.includes('type=recovery')) {
+              setAuthNotification({
+                type: 'info',
+                message: 'Authenticated via password reset link. Please update your password.',
+              });
+              window.history.replaceState({}, document.title, window.location.pathname);
+            }
+          }
         } else {
           setUser(null);
         }
@@ -151,10 +199,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured) {
       try {
+        // Use current window origin for dynamic redirect URL across dev/preview/production
+        const redirectUrl = `${window.location.origin}/auth/callback`;
+
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
+            emailRedirectTo: redirectUrl,
             data: {
               full_name: fullName.trim(),
               phone_number: phoneNumber.trim(),
@@ -280,7 +332,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isSupabaseConfigured) {
       try {
         const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-          redirectTo: `${window.location.origin}/#reset-password`,
+          redirectTo: `${window.location.origin}/auth/callback?type=recovery`,
         });
         if (error) {
           return { success: false, error: error.message };
@@ -321,6 +373,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         session,
         loading,
         isConfigured: isSupabaseConfigured,
+        authNotification,
+        clearAuthNotification,
         signUpAttendee,
         signIn,
         signOut,

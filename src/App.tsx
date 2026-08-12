@@ -39,7 +39,7 @@ type AppView =
   | 'architecture';
 
 function MainAppContent() {
-  const { user } = useAuth();
+  const { user, authNotification, clearAuthNotification } = useAuth();
   const [currentView, setCurrentView] = useState<AppView>('home');
   const [events, setEvents] = useState<SeedEventData[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<SeedEventData | null>(null);
@@ -167,6 +167,32 @@ function MainAppContent() {
         onNavigate={handleNavigate}
         myTicketsCount={userOrders.length}
       />
+
+      {/* Global Auth Feedback Banner (Email Verification / Password Reset) */}
+      {authNotification && (
+        <div
+          id="auth-notification-banner"
+          className={`px-4 py-3 border-b text-sm font-medium flex items-center justify-between transition-all ${
+            authNotification.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : authNotification.type === 'error'
+              ? 'bg-red-50 text-red-800 border-red-200'
+              : 'bg-blue-50 text-blue-800 border-blue-200'
+          }`}
+        >
+          <div className="max-w-7xl mx-auto flex items-center space-x-2.5 w-full">
+            <ShieldCheck className="w-5 h-5 flex-shrink-0 text-emerald-600" />
+            <span>{authNotification.message}</span>
+          </div>
+          <button
+            onClick={clearAuthNotification}
+            className="p-1 rounded-md hover:bg-black/5 text-slate-500 hover:text-slate-800 text-lg font-bold leading-none cursor-pointer"
+            aria-label="Close notification"
+          >
+            &times;
+          </button>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1">
