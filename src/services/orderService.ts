@@ -146,54 +146,60 @@ export async function processPaystackOrder(payload: OrderCheckoutPayload): Promi
     tickets: generatedTickets,
   };
 
-  // 1. Try persisting to Supabase database if connected
+  // 1. Try persisting to Supabase database with authenticated user ID
   if (isSupabaseConfigured) {
     try {
-      // Insert order row
-      const { data: orderData } = await supabase
-        .from('orders')
-        .insert({
-          order_number: orderNumber,
-          user_id: '00000000-0000-0000-0000-000000000000', // Anonymous / Attendee profile
-          event_id: payload.event.id.startsWith('evt-') ? null : payload.event.id,
-          total_amount: payload.totalAmount,
-          currency: 'NGN',
-          status: 'PAID',
-          payment_reference: paymentRef,
-        })
-        .select()
-        .single();
+      const { data: { session } } = await supabase.auth.getSession();
+      const currentUserId = session?.user?.id;
 
-      if (orderData?.id) {
-        // Insert payment row
-        await supabase.from('payments').insert({
-          order_id: orderData.id,
-          provider: 'PAYSTACK',
-          transaction_reference: paymentRef,
-          amount: payload.totalAmount,
-          currency: 'NGN',
-          status: 'SUCCESSFUL',
-          payment_method: payload.paymentMethod,
-        });
+      if (currentUserId) {
+        // Insert order row
+        const { data: orderData } = await supabase
+          .from('orders')
+          .insert({
+            order_number: orderNumber,
+            user_id: currentUserId,
+            event_id: payload.event.id.startsWith('evt-') ? null : payload.event.id,
+            total_amount: payload.totalAmount,
+            currency: 'NGN',
+            status: 'PAID',
+            payment_reference: paymentRef,
+          })
+          .select()
+          .single();
 
-        // Insert tickets
-        const ticketsToInsert = generatedTickets.map((t) => ({
-          ticket_code: t.ticketCode,
-          qr_code_hash: t.qrCodeHash,
-          order_id: orderData.id,
-          event_id: payload.event.id.startsWith('evt-') ? null : payload.event.id,
-          status: 'VALID',
-          is_checked_in: false,
-        }));
+        if (orderData?.id) {
+          // Insert payment row
+          await supabase.from('payments').insert({
+            order_id: orderData.id,
+            provider: 'PAYSTACK',
+            transaction_reference: paymentRef,
+            amount: payload.totalAmount,
+            currency: 'NGN',
+            status: 'SUCCESSFUL',
+            payment_method: payload.paymentMethod,
+          });
 
-        await supabase.from('tickets').insert(ticketsToInsert);
+          // Insert tickets with user_id attached for RLS
+          const ticketsToInsert = generatedTickets.map((t) => ({
+            ticket_code: t.ticketCode,
+            qr_code_hash: t.qrCodeHash,
+            order_id: orderData.id,
+            event_id: payload.event.id.startsWith('evt-') ? null : payload.event.id,
+            user_id: currentUserId,
+            status: 'VALID',
+            is_checked_in: false,
+          }));
+
+          await supabase.from('tickets').insert(ticketsToInsert);
+        }
       }
     } catch (e) {
       console.warn('Supabase DB order insertion notice:', e);
     }
   }
 
-  // 2. Always persist locally for offline access & wallet view
+  // 2. Always persist locally for offline access & instant wallet view
   const existingStr = localStorage.getItem(STORAGE_ORDERS_KEY);
   let existingOrders: CompletedOrderResult[] = [];
   if (existingStr) {

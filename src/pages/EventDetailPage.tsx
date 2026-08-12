@@ -36,7 +36,7 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
     });
   };
 
-  const totalTicketsSelected = Object.values(quantities).reduce((a, b) => a + b, 0);
+  const totalTicketsSelected = Object.values(quantities).reduce((a: number, b: number) => a + b, 0);
 
   const handleContinueToCheckout = () => {
     if (totalTicketsSelected === 0) return;

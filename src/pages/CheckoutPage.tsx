@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
-import { Calendar, MapPin, Clock, CreditCard, Building, PhoneCall, Check, ChevronRight, Lock, Tag, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Calendar, MapPin, Clock, CreditCard, Building, PhoneCall, Check, ChevronRight, Lock, Tag, X, User, LogIn } from 'lucide-react';
 import { SeedEventData } from '../data/seedEvents';
 import { SelectedTicketItem, PaymentMethodType, validatePromoCode, OrderCheckoutPayload } from '../services/orderService';
+import { useAuth } from '../context/AuthContext';
+import { AuthModal } from '../components/AuthModal';
 
 interface CheckoutPageProps {
   event: SeedEventData;
   selectedQuantities: Record<string, number>;
   onNavigateToBrowse: () => void;
   onSubmitCheckout: (payload: OrderCheckoutPayload) => void;
+  onNavigateToSignIn?: () => void;
 }
 
 export const CheckoutPage: React.FC<CheckoutPageProps> = ({
@@ -15,7 +18,11 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
   selectedQuantities,
   onNavigateToBrowse,
   onSubmitCheckout,
+  onNavigateToSignIn,
 }) => {
+  const { user } = useAuth();
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
   // Convert selectedQuantities into ticket items list
   const ticketItems: SelectedTicketItem[] = [];
   event.ticket_types.forEach((tt) => {
@@ -32,11 +39,20 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
 
   const subtotal = ticketItems.reduce((acc, item) => acc + item.subtotal, 0);
 
-  // Buyer Form state
-  const [fullName, setFullName] = useState('Makinde Isaiah O');
-  const [email, setEmail] = useState('info@makindeisaiah.com');
-  const [phone, setPhone] = useState('7033295471');
+  // Buyer Form state auto-populated from user
+  const [fullName, setFullName] = useState(user?.fullName || 'Makinde Isaiah O');
+  const [email, setEmail] = useState(user?.email || 'info@makindeisaiah.com');
+  const [phone, setPhone] = useState(user?.phoneNumber?.replace('+234', '') || '7033295471');
   const [countryCode, setCountryCode] = useState('+234');
+
+  // Update when user loads or changes
+  useEffect(() => {
+    if (user) {
+      if (user.fullName) setFullName(user.fullName);
+      if (user.email) setEmail(user.email);
+      if (user.phoneNumber) setPhone(user.phoneNumber.replace('+234', ''));
+    }
+  }, [user]);
 
   // Promo Code state
   const [promoCodeInput, setPromoCodeInput] = useState('');
@@ -48,12 +64,12 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('CARD');
 
   // Card fields state
-  const [cardName, setCardName] = useState('Makinde Isaiah O');
+  const [cardName, setCardName] = useState(fullName);
   const [cardNumber, setCardNumber] = useState('5343 6352 4836 3527');
   const [cardExpiry, setCardExpiry] = useState('10/27');
   const [cardCvv, setCardCvv] = useState('608');
 
-  // Service Fee calculation (e.g. 2.7% + ~₦18,000 for large totals matching Figma)
+  // Service Fee calculation
   const serviceFee = subtotal > 0 ? Math.round(subtotal * 0.027 + 200) : 0;
   const totalAmount = Math.max(0, subtotal - discountAmount + serviceFee);
 
@@ -76,19 +92,13 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     setPromoMessage('');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!fullName || !email) {
-      alert('Please provide your full name and email address.');
-      return;
-    }
-
+  const executeOrderSubmission = () => {
     const payload: OrderCheckoutPayload = {
       event,
       items: ticketItems,
       buyer: {
-        fullName,
-        email,
+        fullName: fullName || user?.fullName || 'Ticketa Buyer',
+        email: email || user?.email || 'buyer@example.com',
         phoneNumber: `${countryCode}${phone}`,
         promoCode: appliedPromo || undefined,
       },
@@ -100,6 +110,23 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     };
 
     onSubmitCheckout(payload);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!user) {
+      // Prompt user to sign in or create account first
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    if (!fullName || !email) {
+      alert('Please provide your full name and email address.');
+      return;
+    }
+
+    executeOrderSubmission();
   };
 
   const formattedDate = new Date(event.start_time).toLocaleDateString('en-US', {
@@ -126,6 +153,26 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
         <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
         <span className="text-slate-900 font-semibold">Checkout</span>
       </nav>
+
+      {/* Unauthenticated Notification Banner */}
+      {!user && (
+        <div className="bg-amber-50 border border-amber-300 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-900 shadow-xs">
+          <div className="flex items-center space-x-2.5">
+            <LogIn className="w-5 h-5 text-amber-600 flex-shrink-0" />
+            <div>
+              <span className="font-bold block">Sign in required to save tickets to your wallet</span>
+              <p className="text-amber-700">You will be prompted to sign in or create an account before final payment.</p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setIsAuthModalOpen(true)}
+            className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-2 rounded-xl transition-colors cursor-pointer whitespace-nowrap self-stretch sm:self-auto text-center"
+          >
+            Sign In / Register Now
+          </button>
+        </div>
+      )}
 
       {/* Main Checkout Grid */}
       <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -208,9 +255,17 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
           
           {/* Buyer Information Box */}
           <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
-            <h2 className="text-lg font-bold text-slate-900 border-b border-slate-200 pb-3">
-              Buyer Information
-            </h2>
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h2 className="text-lg font-bold text-slate-900">
+                Buyer Information
+              </h2>
+              {user && (
+                <span className="bg-emerald-100 text-[#00b894] text-[10px] font-bold px-2 py-0.5 rounded-full uppercase flex items-center space-x-1">
+                  <User className="w-3 h-3" />
+                  <span>Logged in as {user.fullName}</span>
+                </span>
+              )}
+            </div>
 
             <div className="space-y-4 text-xs sm:text-sm">
               <div>
@@ -466,6 +521,17 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
         </div>
 
       </form>
+
+      {/* Inline Auth Modal for unauthenticated user */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={() => {
+          setIsAuthModalOpen(false);
+          executeOrderSubmission();
+        }}
+        actionTitle="Sign In to Complete Ticket Purchase"
+      />
 
     </div>
   );

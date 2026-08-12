@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { HomePage } from './pages/HomePage';
@@ -6,6 +7,10 @@ import { BrowseEventsPage } from './pages/BrowseEventsPage';
 import { EventDetailPage } from './pages/EventDetailPage';
 import { CheckoutPage } from './pages/CheckoutPage';
 import { MyTicketsPage } from './pages/MyTicketsPage';
+import { SignInPage } from './pages/SignInPage';
+import { SignUpPage } from './pages/SignUpPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { PaymentProcessingModal } from './components/PaymentProcessingModal';
 import { TicketWalletModal } from './components/TicketWalletModal';
 import { getAllEvents } from './services/eventService';
@@ -21,9 +26,20 @@ import {
   ListChecks,
 } from 'lucide-react';
 
-type AppView = 'home' | 'browse' | 'detail' | 'checkout' | 'my-tickets' | 'architecture';
+type AppView = 
+  | 'home' 
+  | 'browse' 
+  | 'detail' 
+  | 'checkout' 
+  | 'my-tickets' 
+  | 'signin' 
+  | 'signup' 
+  | 'forgot-password' 
+  | 'profile' 
+  | 'architecture';
 
-export default function App() {
+function MainAppContent() {
+  const { user } = useAuth();
   const [currentView, setCurrentView] = useState<AppView>('home');
   const [events, setEvents] = useState<SeedEventData[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<SeedEventData | null>(null);
@@ -33,6 +49,9 @@ export default function App() {
   const [checkoutPayload, setCheckoutPayload] = useState<OrderCheckoutPayload | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
   const [activeWalletOrder, setActiveWalletOrder] = useState<CompletedOrderResult | null>(null);
+
+  // Return view state for post-login redirect
+  const [redirectAfterAuth, setRedirectAfterAuth] = useState<AppView | null>(null);
 
   // Browse filters pass-through
   const [browseCategory, setBrowseCategory] = useState<string>('all');
@@ -61,7 +80,27 @@ export default function App() {
     if (params?.searchQuery) {
       setBrowseSearchQuery(params.searchQuery);
     }
+
+    // Protection check for protected routes
+    if (!user && (view === 'checkout' || view === 'profile')) {
+      setRedirectAfterAuth(view);
+      setCurrentView('signin');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     setCurrentView(view);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleAuthSuccess = () => {
+    if (redirectAfterAuth) {
+      const target = redirectAfterAuth;
+      setRedirectAfterAuth(null);
+      setCurrentView(target);
+    } else {
+      setCurrentView('home');
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -74,7 +113,13 @@ export default function App() {
   const handleNavigateToCheckout = (event: SeedEventData, quantities: Record<string, number>) => {
     setSelectedEvent(event);
     setSelectedQuantities(quantities);
-    setCurrentView('checkout');
+    
+    if (!user) {
+      setRedirectAfterAuth('checkout');
+      setCurrentView('signin');
+    } else {
+      setCurrentView('checkout');
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -84,7 +129,7 @@ export default function App() {
   };
 
   const handlePaymentSuccess = (order: CompletedOrderResult) => {
-    // Payment verified and saved to Supabase/LocalStorage
+    // Payment verified and saved
   };
 
   const handleViewTicketsFromModal = (order: CompletedOrderResult) => {
@@ -118,7 +163,7 @@ export default function App() {
       
       {/* Universal Attendee Header */}
       <Header
-        currentView={currentView as any}
+        currentView={currentView}
         onNavigate={handleNavigate}
         myTicketsCount={userOrders.length}
       />
@@ -157,6 +202,10 @@ export default function App() {
             selectedQuantities={selectedQuantities}
             onNavigateToBrowse={() => handleNavigate('browse')}
             onSubmitCheckout={handleSubmitCheckout}
+            onNavigateToSignIn={() => {
+              setRedirectAfterAuth('checkout');
+              setCurrentView('signin');
+            }}
           />
         )}
 
@@ -164,6 +213,34 @@ export default function App() {
           <MyTicketsPage
             onViewTicketWallet={(ord) => setActiveWalletOrder(ord)}
             onNavigateToBrowse={() => handleNavigate('browse')}
+          />
+        )}
+
+        {/* Auth Pages */}
+        {currentView === 'signin' && (
+          <SignInPage
+            onNavigateToSignUp={() => setCurrentView('signup')}
+            onNavigateToForgotPassword={() => setCurrentView('forgot-password')}
+            onSuccessRedirect={handleAuthSuccess}
+          />
+        )}
+
+        {currentView === 'signup' && (
+          <SignUpPage
+            onNavigateToSignIn={() => setCurrentView('signin')}
+            onSuccessRedirect={handleAuthSuccess}
+          />
+        )}
+
+        {currentView === 'forgot-password' && (
+          <ForgotPasswordPage
+            onNavigateToSignIn={() => setCurrentView('signin')}
+          />
+        )}
+
+        {currentView === 'profile' && (
+          <ProfilePage
+            onNavigateToTickets={() => handleNavigate('my-tickets')}
           />
         )}
 
@@ -290,5 +367,13 @@ export default function App() {
       <Footer onNavigate={handleNavigate} />
 
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <MainAppContent />
+    </AuthProvider>
   );
 }
