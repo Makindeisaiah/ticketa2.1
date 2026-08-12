@@ -1,0 +1,6 @@
+{
+  "name": "Ticketa 2.0",
+  "description": "Unified event management and ticketing platform technical architecture, database schemas, and Supabase integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
