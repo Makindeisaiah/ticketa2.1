@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Ticket as TicketIcon, Calendar, MapPin, QrCode, Search, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Ticket as TicketIcon, Calendar, MapPin, QrCode, Search, ChevronRight, Loader2 } from 'lucide-react';
 import { CompletedOrderResult, getUserOrders } from '../services/orderService';
+import { useAuth } from '../context/AuthContext';
 
 interface MyTicketsPageProps {
   onViewTicketWallet: (order: CompletedOrderResult) => void;
@@ -11,9 +12,37 @@ export const MyTicketsPage: React.FC<MyTicketsPageProps> = ({
   onViewTicketWallet,
   onNavigateToBrowse,
 }) => {
-  const orders = getUserOrders();
+  const { user } = useAuth();
+  const [orders, setOrders] = useState<CompletedOrderResult[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'UPCOMING' | 'PAST'>('UPCOMING');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadOrders() {
+      setLoading(true);
+      if (!user) {
+        if (isMounted) {
+          setOrders([]);
+          setLoading(false);
+        }
+        return;
+      }
+
+      const fetched = await getUserOrders(user.email, user.id);
+      if (isMounted) {
+        setOrders(fetched);
+        setLoading(false);
+      }
+    }
+
+    loadOrders();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
 
   const now = new Date();
 

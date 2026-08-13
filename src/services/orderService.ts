@@ -103,6 +103,114 @@ export function generateOrderNumber(): string {
   return `TKT-DF${rand}`;
 }
 
+async function ensureDbEventAndTicketType(
+  event: SeedEventData,
+  userId: string,
+  ticketTypeName: string
+): Promise<{ dbEventId: string | null; dbTicketTypeId: string | null }> {
+  if (!isSupabaseConfigured || !userId) return { dbEventId: null, dbTicketTypeId: null };
+
+  try {
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(event.id);
+
+    let dbEventId: string | null = isUUID ? event.id : null;
+
+    if (!dbEventId) {
+      // Find event in Supabase by slug or title
+      const { data: existingEvents } = await supabase
+        .from('events')
+        .select('id')
+        .or(`slug.eq.${event.slug || ''},title.eq.${event.title}`)
+        .limit(1);
+
+      if (existingEvents && existingEvents.length > 0) {
+        dbEventId = existingEvents[0].id;
+      }
+    }
+
+    // If event does NOT exist in DB yet, create organization, venue, and event
+    if (!dbEventId) {
+      // 1. Get or create organization
+      let orgId: string | null = null;
+      const { data: existingOrgs } = await supabase
+        .from('organizations')
+        .select('id')
+        .limit(1);
+
+      if (existingOrgs && existingOrgs.length > 0) {
+        orgId = existingOrgs[0].id;
+      } else {
+        const { data: newOrg, error: orgError } = await supabase
+          .from('organizations')
+          .insert({
+            name: event.organizer_name || 'Ticketa Verified Events',
+            country: event.venue_country || 'Nigeria',
+            created_by: userId,
+          })
+          .select('id')
+          .single();
+        if (orgError) console.warn('Org creation notice:', orgError.message);
+        orgId = newOrg?.id || null;
+      }
+
+      if (orgId) {
+        // 2. Insert event
+        const { data: newEvent, error: evtError } = await supabase
+          .from('events')
+          .insert({
+            organization_id: orgId,
+            title: event.title,
+            slug: event.slug || `evt-${Date.now()}`,
+            description: event.description,
+            banner_image_url: event.banner_image_url,
+            start_time: event.start_time || new Date().toISOString(),
+            end_time: event.end_time || new Date().toISOString(),
+            status: 'PUBLISHED',
+            created_by: userId,
+          })
+          .select('id')
+          .single();
+
+        if (evtError) console.warn('Event creation notice:', evtError.message);
+        dbEventId = newEvent?.id || null;
+      }
+    }
+
+    if (!dbEventId) return { dbEventId: null, dbTicketTypeId: null };
+
+    // Find or create ticket_type in DB
+    let dbTicketTypeId: string | null = null;
+    const { data: existingTicketTypes } = await supabase
+      .from('ticket_types')
+      .select('id')
+      .eq('event_id', dbEventId)
+      .limit(1);
+
+    if (existingTicketTypes && existingTicketTypes.length > 0) {
+      dbTicketTypeId = existingTicketTypes[0].id;
+    } else {
+      const { data: newTicketType, error: ttError } = await supabase
+        .from('ticket_types')
+        .insert({
+          event_id: dbEventId,
+          name: ticketTypeName || 'General Admission',
+          price: event.ticket_types?.[0]?.price || 0,
+          currency: 'NGN',
+          quantity_available: 1000,
+        })
+        .select('id')
+        .single();
+      if (ttError) console.warn('Ticket type creation notice:', ttError.message);
+      dbTicketTypeId = newTicketType?.id || null;
+    }
+
+    return { dbEventId, dbTicketTypeId };
+  } catch (err) {
+    console.warn('Could not ensure database event / ticket_type:', err);
+    return { dbEventId: null, dbTicketTypeId: null };
+  }
+}
+
 export async function processPaystackOrder(payload: OrderCheckoutPayload): Promise<CompletedOrderResult> {
   const orderNumber = generateOrderNumber();
   const paymentRef = `PSTK-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -153,45 +261,61 @@ export async function processPaystackOrder(payload: OrderCheckoutPayload): Promi
       const currentUserId = session?.user?.id;
 
       if (currentUserId) {
-        // Insert order row
-        const { data: orderData } = await supabase
-          .from('orders')
-          .insert({
-            order_number: orderNumber,
-            user_id: currentUserId,
-            event_id: payload.event.id.startsWith('evt-') ? null : payload.event.id,
-            total_amount: payload.totalAmount,
-            currency: 'NGN',
-            status: 'PAID',
-            payment_reference: paymentRef,
-          })
-          .select()
-          .single();
+        const primaryTicketType = payload.items[0]?.ticketTypeName || 'General Admission';
+        const { dbEventId, dbTicketTypeId } = await ensureDbEventAndTicketType(
+          payload.event,
+          currentUserId,
+          primaryTicketType
+        );
 
-        if (orderData?.id) {
-          // Insert payment row
-          await supabase.from('payments').insert({
-            order_id: orderData.id,
-            provider: 'PAYSTACK',
-            transaction_reference: paymentRef,
-            amount: payload.totalAmount,
-            currency: 'NGN',
-            status: 'SUCCESSFUL',
-            payment_method: payload.paymentMethod,
-          });
+        if (dbEventId) {
+          // Insert order row
+          const { data: orderData, error: orderErr } = await supabase
+            .from('orders')
+            .insert({
+              order_number: orderNumber,
+              user_id: currentUserId,
+              event_id: dbEventId,
+              total_amount: payload.totalAmount,
+              currency: 'NGN',
+              status: 'PAID',
+              payment_reference: paymentRef,
+            })
+            .select()
+            .single();
 
-          // Insert tickets with user_id attached for RLS
-          const ticketsToInsert = generatedTickets.map((t) => ({
-            ticket_code: t.ticketCode,
-            qr_code_hash: t.qrCodeHash,
-            order_id: orderData.id,
-            event_id: payload.event.id.startsWith('evt-') ? null : payload.event.id,
-            user_id: currentUserId,
-            status: 'VALID',
-            is_checked_in: false,
-          }));
+          if (orderErr) {
+            console.error('Supabase DB order insert error:', orderErr.message);
+          } else if (orderData?.id) {
+            // Insert payment row
+            const { error: payErr } = await supabase.from('payments').insert({
+              order_id: orderData.id,
+              provider: 'PAYSTACK',
+              transaction_reference: paymentRef,
+              amount: payload.totalAmount,
+              currency: 'NGN',
+              status: 'SUCCESSFUL',
+              payment_method: payload.paymentMethod,
+            });
+            if (payErr) console.error('Supabase DB payment insert error:', payErr.message);
 
-          await supabase.from('tickets').insert(ticketsToInsert);
+            // Insert tickets with user_id attached for RLS
+            if (dbTicketTypeId) {
+              const ticketsToInsert = generatedTickets.map((t) => ({
+                ticket_code: t.ticketCode,
+                qr_code_hash: t.qrCodeHash,
+                order_id: orderData.id,
+                event_id: dbEventId,
+                ticket_type_id: dbTicketTypeId,
+                user_id: currentUserId,
+                status: 'VALID',
+                is_checked_in: false,
+              }));
+
+              const { error: tktErr } = await supabase.from('tickets').insert(ticketsToInsert);
+              if (tktErr) console.error('Supabase DB tickets insert error:', tktErr.message);
+            }
+          }
         }
       }
     } catch (e) {
@@ -214,12 +338,110 @@ export async function processPaystackOrder(payload: OrderCheckoutPayload): Promi
   return orderResult;
 }
 
-export function getUserOrders(): CompletedOrderResult[] {
-  const existingStr = localStorage.getItem(STORAGE_ORDERS_KEY);
-  if (!existingStr) return [];
-  try {
-    return JSON.parse(existingStr);
-  } catch (e) {
+export async function getUserOrders(userEmail?: string, userId?: string): Promise<CompletedOrderResult[]> {
+  // If user is NOT logged in (no email and no userId), return empty array so another user's tickets are NOT shown!
+  if (!userEmail && !userId) {
     return [];
   }
+
+  let dbOrders: CompletedOrderResult[] = [];
+
+  // 1. Fetch from Supabase DB if user is logged in
+  if (isSupabaseConfigured && (userId || userEmail)) {
+    try {
+      let query = supabase
+        .from('orders')
+        .select(`
+          id,
+          order_number,
+          total_amount,
+          status,
+          created_at,
+          payment_reference,
+          events (
+            id,
+            title,
+            start_time,
+            banner_image_url,
+            venues ( name, city )
+          ),
+          tickets (
+            ticket_code,
+            qr_code_hash,
+            status,
+            is_checked_in,
+            ticket_types ( name )
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
+
+      const { data, error } = await query;
+
+      if (!error && data && data.length > 0) {
+        dbOrders = data.map((ord: any) => ({
+          id: ord.id,
+          orderNumber: ord.order_number,
+          eventId: ord.events?.id || '',
+          eventTitle: ord.events?.title || 'Event',
+          eventDate: ord.events?.start_time || new Date().toISOString(),
+          eventVenue: ord.events?.venues ? `${ord.events.venues.name}, ${ord.events.venues.city}` : 'Lagos, Nigeria',
+          eventBanner: ord.events?.banner_image_url || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80',
+          buyerName: '',
+          buyerEmail: userEmail || '',
+          buyerPhone: '',
+          paymentMethod: 'CARD',
+          items: (ord.tickets || []).map((t: any) => ({
+            ticketTypeName: t.ticket_types?.name || 'Ticket',
+            quantity: 1,
+            unitPrice: Number(ord.total_amount),
+            subtotal: Number(ord.total_amount),
+          })),
+          subtotal: Number(ord.total_amount),
+          discountAmount: 0,
+          serviceFee: 0,
+          totalAmount: Number(ord.total_amount),
+          status: ord.status === 'PAID' ? 'PAID' : 'PENDING',
+          createdAt: ord.created_at,
+          paymentReference: ord.payment_reference || '',
+          tickets: (ord.tickets || []).map((t: any) => ({
+            ticketCode: t.ticket_code,
+            ticketType: t.ticket_types?.name || 'General Admission',
+            qrCodeHash: t.qr_code_hash,
+            status: t.status || 'VALID',
+            isCheckedIn: Boolean(t.is_checked_in),
+          })),
+        }));
+      }
+    } catch (e) {
+      console.warn('Could not fetch user orders from Supabase DB:', e);
+    }
+  }
+
+  // 2. Read from localStorage, filtered strictly by user email
+  const existingStr = localStorage.getItem(STORAGE_ORDERS_KEY);
+  let localFilteredOrders: CompletedOrderResult[] = [];
+  if (existingStr) {
+    try {
+      const allLocalOrders: CompletedOrderResult[] = JSON.parse(existingStr);
+      localFilteredOrders = allLocalOrders.filter((ord) => {
+        if (!userEmail) return false;
+        return ord.buyerEmail?.trim().toLowerCase() === userEmail.trim().toLowerCase();
+      });
+    } catch (e) {}
+  }
+
+  // 3. Merge & deduplicate local and DB orders by orderNumber
+  const orderMap = new Map<string, CompletedOrderResult>();
+  dbOrders.forEach((o) => orderMap.set(o.orderNumber, o));
+  localFilteredOrders.forEach((o) => {
+    if (!orderMap.has(o.orderNumber)) {
+      orderMap.set(o.orderNumber, o);
+    }
+  });
+
+  return Array.from(orderMap.values());
 }

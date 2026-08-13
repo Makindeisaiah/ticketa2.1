@@ -60,7 +60,19 @@ function MainAppContent() {
   // Architecture view state
   const [archTab, setArchTab] = useState<'architecture' | 'schema' | 'auth' | 'qr' | 'payments' | 'decisions' | 'roadmap'>('architecture');
 
-  const userOrders = getUserOrders();
+  const [userOrders, setUserOrders] = useState<CompletedOrderResult[]>([]);
+
+  useEffect(() => {
+    async function loadUserOrders() {
+      if (!user) {
+        setUserOrders([]);
+        return;
+      }
+      const fetched = await getUserOrders(user.email, user.id);
+      setUserOrders(fetched);
+    }
+    loadUserOrders();
+  }, [user]);
 
   useEffect(() => {
     async function loadEvents() {
@@ -128,8 +140,11 @@ function MainAppContent() {
     setIsPaymentModalOpen(true);
   };
 
-  const handlePaymentSuccess = (order: CompletedOrderResult) => {
-    // Payment verified and saved
+  const handlePaymentSuccess = async (order: CompletedOrderResult) => {
+    if (user) {
+      const fetched = await getUserOrders(user.email, user.id);
+      setUserOrders(fetched);
+    }
   };
 
   const handleViewTicketsFromModal = (order: CompletedOrderResult) => {

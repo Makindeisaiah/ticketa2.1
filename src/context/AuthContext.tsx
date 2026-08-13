@@ -104,7 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     async function initAuth() {
       // Check URL parameters for email verification or password reset callback
       const href = window.location.href;
-      const isAuthCallback = href.includes('type=signup') || href.includes('type=recovery') || href.includes('/auth/callback') || href.includes('access_token=');
+      const isAuthCallback = href.includes('type=signup') || href.includes('type=recovery') || href.includes('/auth/callback') || href.includes('/callback') || href.includes('access_token=');
 
       if (isSupabaseConfigured) {
         try {
@@ -165,7 +165,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Handle verification callback events
           if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
             const href = window.location.href;
-            if (href.includes('type=signup') || href.includes('/auth/callback')) {
+            if (href.includes('type=signup') || href.includes('/auth/callback') || href.includes('/callback')) {
               setAuthNotification({
                 type: 'success',
                 message: 'Your email address has been verified successfully! Welcome to Ticketa.',
@@ -199,8 +199,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured) {
       try {
-        // Use current window origin for dynamic redirect URL across dev/preview/production
-        const redirectUrl = `${window.location.origin}/auth/callback`;
+        // Use current window origin /callback to match custom configured redirect URL in Supabase Dashboard
+        const redirectUrl = `${window.location.origin}/callback`;
 
         const { data, error } = await supabase.auth.signUp({
           email,
