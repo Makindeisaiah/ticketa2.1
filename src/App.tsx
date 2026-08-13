@@ -37,7 +37,6 @@ type AppView =
   | 'signup' 
   | 'forgot-password' 
   | 'profile' 
-  | 'organizer-dashboard'
   | 'architecture';
 
 function MainAppContent() {
@@ -96,7 +95,7 @@ function MainAppContent() {
     }
 
     // Protection check for protected routes
-    if (!user && (view === 'checkout' || view === 'profile' || view === 'organizer-dashboard')) {
+    if (!user && (view === 'checkout' || view === 'profile')) {
       setRedirectAfterAuth(view);
       setCurrentView('signin');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -302,12 +301,6 @@ function MainAppContent() {
           />
         )}
 
-        {currentView === 'organizer-dashboard' && (
-          <OrganizerDashboardPage
-            onNavigateToAttendeeApp={() => handleNavigate('home')}
-          />
-        )}
-
         {/* Architecture Specs View */}
         {currentView === 'architecture' && (
           <div className="bg-slate-950 text-slate-100 min-h-[calc(100vh-72px)] p-6 lg:p-8">
@@ -435,9 +428,31 @@ function MainAppContent() {
 }
 
 export default function App() {
+  const [pathname, setPathname] = useState(window.location.pathname);
+
+  useEffect(() => {
+    const handleLocationChange = () => {
+      setPathname(window.location.pathname);
+    };
+
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
+  }, []);
+
+  const isOrganizerRoute = pathname === '/organizer' || pathname.startsWith('/organizer/');
+
   return (
     <AuthProvider>
-      <MainAppContent />
+      {isOrganizerRoute ? (
+        <OrganizerDashboardPage
+          onNavigateToAttendeeApp={() => {
+            window.history.pushState({}, '', '/');
+            setPathname('/');
+          }}
+        />
+      ) : (
+        <MainAppContent />
+      )}
     </AuthProvider>
   );
 }

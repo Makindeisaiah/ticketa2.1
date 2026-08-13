@@ -19,6 +19,7 @@ import { OrganizerTeam } from '../components/OrganizerTeam';
 import { OrganizerAuditLogs } from '../components/OrganizerAuditLogs';
 import { OrganizerSettings } from '../components/OrganizerSettings';
 import { OrganizerOnboardingModal } from '../components/OrganizerOnboardingModal';
+import { OrganizerAuth } from '../components/OrganizerAuth';
 import { Building2, Plus, Sparkles, AlertCircle } from 'lucide-react';
 
 interface OrganizerDashboardPageProps {
@@ -36,6 +37,11 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
   const [loading, setLoading] = useState(true);
   const [isCreateOrgOpen, setIsCreateOrgOpen] = useState(false);
   const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
+
+  // If user is not logged in, render dedicated Organizer Portal Auth Screen
+  if (!user) {
+    return <OrganizerAuth onSuccess={() => loadUserOrgs()} />;
+  }
 
   // Data states for active organization
   const [metrics, setMetrics] = useState({
