@@ -8,6 +8,8 @@ interface SignUpData {
   email: string;
   phoneNumber: string;
   password: string;
+  role?: 'ATTENDEE' | 'ORGANIZER' | 'STAFF' | 'ADMIN';
+  redirectTo?: string;
 }
 
 interface SignInData {
@@ -122,6 +124,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setUser(authUser);
 
               if (isAuthCallback) {
+                // Extract redirect parameter if present, otherwise check user role or current path
+                let destination = '/';
+                try {
+                  const urlObj = new URL(href);
+                  const redirectParam = urlObj.searchParams.get('redirect');
+                  if (redirectParam) {
+                    destination = redirectParam;
+                  } else if (authUser.role === 'ORGANIZER' || href.includes('/organizer')) {
+                    destination = '/organizer';
+                  }
+                } catch (e) {}
+
                 if (href.includes('type=recovery')) {
                   setAuthNotification({
                     type: 'info',
@@ -133,8 +147,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     message: 'Your email address has been verified successfully! You are now logged in.',
                   });
                 }
-                // Clean up URL bar to root path
-                window.history.replaceState({}, document.title, '/');
+                // Clean up URL bar to destination path and dispatch popstate
+                window.history.replaceState({}, document.title, destination);
+                window.dispatchEvent(new Event('popstate'));
               }
             }
           }
@@ -163,18 +178,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Handle verification callback events
           if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
             const href = window.location.href;
-            if (href.includes('type=signup') || href.includes('/auth/callback') || href.includes('/callback')) {
+            if (href.includes('type=signup') || href.includes('/auth/callback') || href.includes('/callback') || href.includes('code=')) {
+              let destination = '/';
+              try {
+                const urlObj = new URL(href);
+                const redirectParam = urlObj.searchParams.get('redirect');
+                if (redirectParam) {
+                  destination = redirectParam;
+                } else if (authUser.role === 'ORGANIZER' || href.includes('/organizer')) {
+                  destination = '/organizer';
+                }
+              } catch (e) {}
+
               setAuthNotification({
                 type: 'success',
                 message: 'Your email address has been verified successfully! Welcome to Ticketa.',
               });
-              window.history.replaceState({}, document.title, '/');
+              window.history.replaceState({}, document.title, destination);
+              window.dispatchEvent(new Event('popstate'));
             } else if (href.includes('type=recovery')) {
               setAuthNotification({
                 type: 'info',
                 message: 'Authenticated via password reset link. Please update your password.',
               });
               window.history.replaceState({}, document.title, '/');
+              window.dispatchEvent(new Event('popstate'));
             }
           }
         } else {
@@ -190,7 +218,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const signUpAttendee = async ({ fullName, email, phoneNumber, password }: SignUpData) => {
+  const signUpAttendee = async ({ fullName, email, phoneNumber, password, role = 'ATTENDEE', redirectTo = '/' }: SignUpData) => {
     if (!fullName.trim() || !email.trim() || !password) {
       return { success: false, error: 'Full name, email and password are required.' };
     }
@@ -203,8 +231,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      // Direct redirect URL to /auth/callback for production & preview environments
-      const redirectUrl = `${window.location.origin}/auth/callback`;
+      // Direct redirect URL to /auth/callback with redirect query param
+      const redirectUrl = redirectTo.startsWith('http')
+        ? redirectTo
+        : `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`;
 
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -214,7 +244,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           data: {
             full_name: fullName.trim(),
             phone_number: phoneNumber.trim(),
-            role: 'ATTENDEE', // Explicitly enforced role
+            role,
           },
         },
       });
@@ -224,13 +254,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (data.user) {
-        // Explicitly ensure profile is created in public.profiles with ATTENDEE platform role
+        // Explicitly ensure profile is created in public.profiles with specified role
         await supabase.from('profiles').upsert({
           id: data.user.id,
           full_name: fullName.trim(),
           email: email.trim().toLowerCase(),
           phone_number: phoneNumber.trim(),
-          role: 'ATTENDEE',
+          role,
           is_email_verified: Boolean(data.user.email_confirmed_at),
         });
 
@@ -243,7 +273,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: data.user.email || email,
             fullName: fullName.trim(),
             phoneNumber: phoneNumber.trim(),
-            role: 'ATTENDEE',
+            role,
             isEmailVerified: Boolean(data.user.email_confirmed_at),
           });
         }

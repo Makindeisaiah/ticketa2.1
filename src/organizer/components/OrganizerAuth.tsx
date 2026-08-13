@@ -81,6 +81,8 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess }) => {
           email: signUpEmail,
           phoneNumber,
           password: signUpPassword,
+          role: 'ORGANIZER',
+          redirectTo: '/organizer',
         });
 
         if (!signUpRes.success) {
