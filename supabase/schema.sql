@@ -462,15 +462,38 @@ ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Profiles Policies
-CREATE POLICY "Public profiles are viewable by authenticated users"
-    ON public.profiles FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY "Public profiles are viewable by anyone or authenticated users"
+    ON public.profiles FOR SELECT USING (TRUE);
+
+CREATE POLICY "Users can insert their own profile"
+    ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
 
 CREATE POLICY "Users can update their own profile"
     ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
+-- Organizations Policies
+CREATE POLICY "Organizations are viewable by anyone"
+    ON public.organizations FOR SELECT USING (TRUE);
+
+CREATE POLICY "Authenticated users can create organizations"
+    ON public.organizations FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Organizers can update their own organizations"
+    ON public.organizations FOR UPDATE USING (created_by = auth.uid());
+
+-- Venues Policies
+CREATE POLICY "Venues are viewable by anyone"
+    ON public.venues FOR SELECT USING (TRUE);
+
+CREATE POLICY "Authenticated users can create venues"
+    ON public.venues FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
 -- Events Policies
 CREATE POLICY "Published events are publicly readable"
-    ON public.events FOR SELECT USING (status = 'PUBLISHED' OR auth.role() = 'authenticated');
+    ON public.events FOR SELECT USING (TRUE);
+
+CREATE POLICY "Authenticated users can create events"
+    ON public.events FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
 CREATE POLICY "Organizers can manage events in their organizations"
     ON public.events FOR ALL USING (
@@ -478,16 +501,58 @@ CREATE POLICY "Organizers can manage events in their organizations"
             SELECT 1 FROM public.organization_members om
             WHERE om.organization_id = events.organization_id
             AND om.user_id = auth.uid()
-        )
+        ) OR created_by = auth.uid()
     );
 
 -- Ticket Types Policies
 CREATE POLICY "Ticket types are viewable by anyone for published events"
     ON public.ticket_types FOR SELECT USING (TRUE);
 
+CREATE POLICY "Authenticated users can create ticket types"
+    ON public.ticket_types FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+-- Orders Policies
+CREATE POLICY "Attendees can view their own orders"
+    ON public.orders FOR SELECT USING (user_id = auth.uid());
+
+CREATE POLICY "Attendees can insert their own orders"
+    ON public.orders FOR INSERT WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "Attendees can update their own orders"
+    ON public.orders FOR UPDATE USING (user_id = auth.uid());
+
+CREATE POLICY "Organizers can view orders for their events"
+    ON public.orders FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM public.events e
+            JOIN public.organization_members om ON om.organization_id = e.organization_id
+            WHERE e.id = orders.event_id AND om.user_id = auth.uid()
+        )
+    );
+
+-- Order Items Policies
+CREATE POLICY "Order items are viewable by order owner"
+    ON public.order_items FOR SELECT USING (TRUE);
+
+CREATE POLICY "Order items can be inserted by authenticated users"
+    ON public.order_items FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+-- Payments Policies
+CREATE POLICY "Payments viewable by order owner"
+    ON public.payments FOR SELECT USING (TRUE);
+
+CREATE POLICY "Payments can be inserted by authenticated users"
+    ON public.payments FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
 -- Tickets Policies
 CREATE POLICY "Attendees can view their own tickets"
     ON public.tickets FOR SELECT USING (user_id = auth.uid());
+
+CREATE POLICY "Attendees can insert their own tickets"
+    ON public.tickets FOR INSERT WITH CHECK (user_id = auth.uid());
+
+CREATE POLICY "Attendees can update their own tickets"
+    ON public.tickets FOR UPDATE USING (user_id = auth.uid());
 
 CREATE POLICY "Organizers can view tickets for their events"
     ON public.tickets FOR SELECT USING (
@@ -503,19 +568,6 @@ CREATE POLICY "Assigned staff can view & verify tickets for their assigned event
         EXISTS (
             SELECT 1 FROM public.event_staff_assignments esa
             WHERE esa.event_id = tickets.event_id AND esa.staff_user_id = auth.uid()
-        )
-    );
-
--- Orders Policies
-CREATE POLICY "Attendees can view their own orders"
-    ON public.orders FOR SELECT USING (user_id = auth.uid());
-
-CREATE POLICY "Organizers can view orders for their events"
-    ON public.orders FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM public.events e
-            JOIN public.organization_members om ON om.organization_id = e.organization_id
-            WHERE e.id = orders.event_id AND om.user_id = auth.uid()
         )
     );
 

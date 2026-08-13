@@ -39,7 +39,7 @@ type AppView =
   | 'architecture';
 
 function MainAppContent() {
-  const { user, authNotification, clearAuthNotification } = useAuth();
+  const { user, isConfigured, authNotification, clearAuthNotification } = useAuth();
   const [currentView, setCurrentView] = useState<AppView>('home');
   const [events, setEvents] = useState<SeedEventData[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<SeedEventData | null>(null);
@@ -206,6 +206,21 @@ function MainAppContent() {
           >
             &times;
           </button>
+        </div>
+      )}
+
+      {/* Supabase Unconfigured Warning Banner */}
+      {!isConfigured && (
+        <div
+          id="supabase-unconfigured-banner"
+          className="bg-amber-50 text-amber-900 border-b border-amber-200 px-4 py-3 text-sm font-medium flex items-center"
+        >
+          <div className="max-w-7xl mx-auto flex items-center space-x-2.5 w-full">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 text-amber-600" />
+            <span>
+              <strong>Supabase PostgreSQL Unconfigured:</strong> Missing <code className="bg-amber-100 px-1 py-0.5 rounded text-xs font-mono">VITE_SUPABASE_URL</code> and <code className="bg-amber-100 px-1 py-0.5 rounded text-xs font-mono">VITE_SUPABASE_ANON_KEY</code>. Please configure these variables in Vercel or your <code className="bg-amber-100 px-1 py-0.5 rounded text-xs font-mono">.env</code> file.
+            </span>
+          </div>
         </div>
       )}
 

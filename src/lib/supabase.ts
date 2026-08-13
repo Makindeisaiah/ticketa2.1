@@ -2,14 +2,18 @@ import { createClient } from '@supabase/supabase-js';
 
 const metaEnv = (import.meta as any).env || {};
 
-const supabaseUrl = metaEnv.VITE_SUPABASE_URL || 'https://placeholder-supabase.supabase.co';
-const supabaseAnonKey = metaEnv.VITE_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+const rawUrl = metaEnv.VITE_SUPABASE_URL || '';
+const rawKey = metaEnv.VITE_SUPABASE_ANON_KEY || '';
 
 export const isSupabaseConfigured = Boolean(
-  metaEnv.VITE_SUPABASE_URL && 
-  metaEnv.VITE_SUPABASE_ANON_KEY &&
-  !metaEnv.VITE_SUPABASE_URL.includes('your-supabase-project-ref')
+  rawUrl && 
+  rawKey &&
+  !rawUrl.includes('your-supabase-project-ref') &&
+  rawUrl.startsWith('https://')
 );
+
+const supabaseUrl = isSupabaseConfigured ? rawUrl : 'https://placeholder-project.supabase.co';
+const supabaseAnonKey = isSupabaseConfigured ? rawKey : 'placeholder-anon-key';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -18,3 +22,4 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true,
   },
 });
+

@@ -32,8 +32,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_MOCK_USER_KEY = 'ticketa_mock_authenticated_user_v1';
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -67,7 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         } else {
           // Create profile if missing
-          await supabase.from('profiles').insert({
+          await supabase.from('profiles').upsert({
             id: supabaseUser.id,
             full_name: fullName,
             email: supabaseUser.email || '',
@@ -135,14 +133,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (e) {
           console.error('Error loading session:', e);
         }
-      } else {
-        // Fallback demo local session state
-        const savedMock = localStorage.getItem(LOCAL_STORAGE_MOCK_USER_KEY);
-        if (savedMock && mounted) {
-          try {
-            setUser(JSON.parse(savedMock));
-          } catch (e) {}
-        }
       }
 
       if (mounted) {
@@ -197,76 +187,68 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: 'Full name, email and password are required.' };
     }
 
-    if (isSupabaseConfigured) {
-      try {
-        // Use current window origin /callback to match custom configured redirect URL in Supabase Dashboard
-        const redirectUrl = `${window.location.origin}/callback`;
+    if (!isSupabaseConfigured) {
+      return {
+        success: false,
+        error: 'Supabase database is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel or your .env file.',
+      };
+    }
 
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: redirectUrl,
-            data: {
-              full_name: fullName.trim(),
-              phone_number: phoneNumber.trim(),
-              role: 'ATTENDEE', // Explicitly enforced role
-            },
+    try {
+      // Use current window origin /callback to match custom configured redirect URL in Supabase Dashboard
+      const redirectUrl = `${window.location.origin}/callback`;
+
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            full_name: fullName.trim(),
+            phone_number: phoneNumber.trim(),
+            role: 'ATTENDEE', // Explicitly enforced role
           },
+        },
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      if (data.user) {
+        // Explicitly ensure profile is created in public.profiles with ATTENDEE platform role
+        await supabase.from('profiles').upsert({
+          id: data.user.id,
+          full_name: fullName.trim(),
+          email: email.trim().toLowerCase(),
+          phone_number: phoneNumber.trim(),
+          role: 'ATTENDEE',
+          is_email_verified: Boolean(data.user.email_confirmed_at),
         });
 
-        if (error) {
-          return { success: false, error: error.message };
-        }
-
-        if (data.user) {
-          // Explicitly ensure profile is created with ATTENDEE platform role
-          await supabase.from('profiles').upsert({
+        const requiresVerification = !data.session && !data.user.email_confirmed_at;
+        
+        if (data.session) {
+          setSession(data.session);
+          setUser({
             id: data.user.id,
-            full_name: fullName.trim(),
-            email: email.trim().toLowerCase(),
-            phone_number: phoneNumber.trim(),
+            email: data.user.email || email,
+            fullName: fullName.trim(),
+            phoneNumber: phoneNumber.trim(),
             role: 'ATTENDEE',
-            is_email_verified: Boolean(data.user.email_confirmed_at),
+            isEmailVerified: Boolean(data.user.email_confirmed_at),
           });
-
-          const requiresVerification = !data.session && !data.user.email_confirmed_at;
-          
-          if (data.session) {
-            setSession(data.session);
-            setUser({
-              id: data.user.id,
-              email: data.user.email || email,
-              fullName: fullName.trim(),
-              phoneNumber: phoneNumber.trim(),
-              role: 'ATTENDEE',
-              isEmailVerified: Boolean(data.user.email_confirmed_at),
-            });
-          }
-
-          return {
-            success: true,
-            requiresEmailVerification: requiresVerification,
-          };
         }
 
-        return { success: false, error: 'Failed to create account. Please try again.' };
-      } catch (e: any) {
-        return { success: false, error: e.message || 'An unexpected error occurred.' };
+        return {
+          success: true,
+          requiresEmailVerification: requiresVerification,
+        };
       }
-    } else {
-      // Offline / Local Demo Registration
-      const mockUser: AuthUser = {
-        id: `usr_${Date.now()}`,
-        email: email.trim().toLowerCase(),
-        fullName: fullName.trim(),
-        phoneNumber: phoneNumber.trim(),
-        role: 'ATTENDEE',
-        isEmailVerified: true,
-      };
-      localStorage.setItem(LOCAL_STORAGE_MOCK_USER_KEY, JSON.stringify(mockUser));
-      setUser(mockUser);
-      return { success: true };
+
+      return { success: false, error: 'Failed to create account. Please try again.' };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'An unexpected error occurred.' };
     }
   };
 
@@ -275,41 +257,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: 'Email and password are required.' };
     }
 
-    if (isSupabaseConfigured) {
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: email.trim().toLowerCase(),
-          password,
-        });
-
-        if (error) {
-          return { success: false, error: error.message };
-        }
-
-        if (data.user) {
-          const authUser = await fetchUserProfile(data.user);
-          setUser(authUser);
-          setSession(data.session);
-          return { success: true };
-        }
-
-        return { success: false, error: 'Invalid login response.' };
-      } catch (e: any) {
-        return { success: false, error: e.message || 'Could not sign in.' };
-      }
-    } else {
-      // Demo authentication
-      const mockUser: AuthUser = {
-        id: 'usr_demo_123',
-        email: email.trim().toLowerCase(),
-        fullName: email.split('@')[0] ? email.split('@')[0].toUpperCase() : 'Ticketa Attendee',
-        phoneNumber: '+2347033295471',
-        role: 'ATTENDEE',
-        isEmailVerified: true,
+    if (!isSupabaseConfigured) {
+      return {
+        success: false,
+        error: 'Supabase database is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel or your .env file.',
       };
-      localStorage.setItem(LOCAL_STORAGE_MOCK_USER_KEY, JSON.stringify(mockUser));
-      setUser(mockUser);
-      return { success: true };
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      if (data.user) {
+        const authUser = await fetchUserProfile(data.user);
+        setUser(authUser);
+        setSession(data.session);
+        return { success: true };
+      }
+
+      return { success: false, error: 'Invalid login response.' };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Could not sign in.' };
     }
   };
 
@@ -319,7 +293,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await supabase.auth.signOut();
       } catch (e) {}
     }
-    localStorage.removeItem(LOCAL_STORAGE_MOCK_USER_KEY);
     setUser(null);
     setSession(null);
   };

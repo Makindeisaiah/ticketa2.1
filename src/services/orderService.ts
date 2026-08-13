@@ -323,125 +323,96 @@ export async function processPaystackOrder(payload: OrderCheckoutPayload): Promi
     }
   }
 
-  // 2. Always persist locally for offline access & instant wallet view
-  const existingStr = localStorage.getItem(STORAGE_ORDERS_KEY);
-  let existingOrders: CompletedOrderResult[] = [];
-  if (existingStr) {
-    try {
-      existingOrders = JSON.parse(existingStr);
-    } catch (e) {}
-  }
-
-  existingOrders.unshift(orderResult);
-  localStorage.setItem(STORAGE_ORDERS_KEY, JSON.stringify(existingOrders));
-
   return orderResult;
 }
 
 export async function getUserOrders(userEmail?: string, userId?: string): Promise<CompletedOrderResult[]> {
-  // If user is NOT logged in (no email and no userId), return empty array so another user's tickets are NOT shown!
+  // If user is NOT logged in (no email and no userId), return empty array
   if (!userEmail && !userId) {
     return [];
   }
 
-  let dbOrders: CompletedOrderResult[] = [];
+  if (!isSupabaseConfigured) {
+    console.warn('Supabase is not configured. Unable to fetch user orders from PostgreSQL database.');
+    return [];
+  }
 
-  // 1. Fetch from Supabase DB if user is logged in
-  if (isSupabaseConfigured && (userId || userEmail)) {
-    try {
-      let query = supabase
-        .from('orders')
-        .select(`
+  try {
+    let query = supabase
+      .from('orders')
+      .select(`
+        id,
+        order_number,
+        total_amount,
+        status,
+        created_at,
+        payment_reference,
+        events (
           id,
-          order_number,
-          total_amount,
+          title,
+          start_time,
+          banner_image_url,
+          venues ( name, city )
+        ),
+        tickets (
+          ticket_code,
+          qr_code_hash,
           status,
-          created_at,
-          payment_reference,
-          events (
-            id,
-            title,
-            start_time,
-            banner_image_url,
-            venues ( name, city )
-          ),
-          tickets (
-            ticket_code,
-            qr_code_hash,
-            status,
-            is_checked_in,
-            ticket_types ( name )
-          )
-        `)
-        .order('created_at', { ascending: false });
+          is_checked_in,
+          ticket_types ( name )
+        )
+      `)
+      .order('created_at', { ascending: false });
 
-      if (userId) {
-        query = query.eq('user_id', userId);
-      }
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
 
-      const { data, error } = await query;
+    const { data, error } = await query;
 
-      if (!error && data && data.length > 0) {
-        dbOrders = data.map((ord: any) => ({
-          id: ord.id,
-          orderNumber: ord.order_number,
-          eventId: ord.events?.id || '',
-          eventTitle: ord.events?.title || 'Event',
-          eventDate: ord.events?.start_time || new Date().toISOString(),
-          eventVenue: ord.events?.venues ? `${ord.events.venues.name}, ${ord.events.venues.city}` : 'Lagos, Nigeria',
-          eventBanner: ord.events?.banner_image_url || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80',
-          buyerName: '',
-          buyerEmail: userEmail || '',
-          buyerPhone: '',
-          paymentMethod: 'CARD',
-          items: (ord.tickets || []).map((t: any) => ({
-            ticketTypeName: t.ticket_types?.name || 'Ticket',
-            quantity: 1,
-            unitPrice: Number(ord.total_amount),
-            subtotal: Number(ord.total_amount),
-          })),
+    if (error) {
+      console.error('Error querying Supabase orders:', error.message);
+      return [];
+    }
+
+    if (data && data.length > 0) {
+      return data.map((ord: any) => ({
+        id: ord.id,
+        orderNumber: ord.order_number,
+        eventId: ord.events?.id || '',
+        eventTitle: ord.events?.title || 'Event',
+        eventDate: ord.events?.start_time || new Date().toISOString(),
+        eventVenue: ord.events?.venues ? `${ord.events.venues.name}, ${ord.events.venues.city}` : 'Lagos, Nigeria',
+        eventBanner: ord.events?.banner_image_url || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80',
+        buyerName: '',
+        buyerEmail: userEmail || '',
+        buyerPhone: '',
+        paymentMethod: 'CARD',
+        items: (ord.tickets || []).map((t: any) => ({
+          ticketTypeName: t.ticket_types?.name || 'Ticket',
+          quantity: 1,
+          unitPrice: Number(ord.total_amount),
           subtotal: Number(ord.total_amount),
-          discountAmount: 0,
-          serviceFee: 0,
-          totalAmount: Number(ord.total_amount),
-          status: ord.status === 'PAID' ? 'PAID' : 'PENDING',
-          createdAt: ord.created_at,
-          paymentReference: ord.payment_reference || '',
-          tickets: (ord.tickets || []).map((t: any) => ({
-            ticketCode: t.ticket_code,
-            ticketType: t.ticket_types?.name || 'General Admission',
-            qrCodeHash: t.qr_code_hash,
-            status: t.status || 'VALID',
-            isCheckedIn: Boolean(t.is_checked_in),
-          })),
-        }));
-      }
-    } catch (e) {
-      console.warn('Could not fetch user orders from Supabase DB:', e);
+        })),
+        subtotal: Number(ord.total_amount),
+        discountAmount: 0,
+        serviceFee: 0,
+        totalAmount: Number(ord.total_amount),
+        status: ord.status === 'PAID' ? 'PAID' : 'PENDING',
+        createdAt: ord.created_at,
+        paymentReference: ord.payment_reference || '',
+        tickets: (ord.tickets || []).map((t: any) => ({
+          ticketCode: t.ticket_code,
+          ticketType: t.ticket_types?.name || 'General Admission',
+          qrCodeHash: t.qr_code_hash,
+          status: t.status || 'VALID',
+          isCheckedIn: Boolean(t.is_checked_in),
+        })),
+      }));
     }
+  } catch (e) {
+    console.warn('Could not fetch user orders from Supabase DB:', e);
   }
 
-  // 2. Read from localStorage, filtered strictly by user email
-  const existingStr = localStorage.getItem(STORAGE_ORDERS_KEY);
-  let localFilteredOrders: CompletedOrderResult[] = [];
-  if (existingStr) {
-    try {
-      const allLocalOrders: CompletedOrderResult[] = JSON.parse(existingStr);
-      localFilteredOrders = allLocalOrders.filter((ord) => {
-        if (!userEmail) return false;
-        return ord.buyerEmail?.trim().toLowerCase() === userEmail.trim().toLowerCase();
-      });
-    } catch (e) {}
-  }
-
-  // 3. Merge & deduplicate local and DB orders by orderNumber
-  const orderMap = new Map<string, CompletedOrderResult>();
-  dbOrders.forEach((o) => orderMap.set(o.orderNumber, o));
-  localFilteredOrders.forEach((o) => {
-    if (!orderMap.has(o.orderNumber)) {
-      orderMap.set(o.orderNumber, o);
-    }
-  });
-
-  return Array.from(orderMap.values());
+  return [];
 }
