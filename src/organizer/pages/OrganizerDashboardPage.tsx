@@ -11,12 +11,10 @@ import { OrganizerLayout, OrganizerTab } from '../components/OrganizerLayout';
 import { Organization } from '../../types/database';
 import { OrganizerOverview } from '../components/OrganizerOverview';
 import { OrganizerEvents } from '../components/OrganizerEvents';
+import { OrganizerAnalytics } from '../components/OrganizerAnalytics';
+import { OrganizerTicketSales } from '../components/OrganizerTicketSales';
+import { OrganizerCheckIns } from '../components/OrganizerCheckIns';
 import { CreateEventModal } from '../components/CreateEventModal';
-import { OrganizerOrdersAttendees } from '../components/OrganizerOrdersAttendees';
-import { OrganizerCheckInScanner } from '../components/OrganizerCheckInScanner';
-import { OrganizerFinance } from '../components/OrganizerFinance';
-import { OrganizerTeam } from '../components/OrganizerTeam';
-import { OrganizerAuditLogs } from '../components/OrganizerAuditLogs';
 import { OrganizerSettings } from '../components/OrganizerSettings';
 import { OrganizerOnboardingModal } from '../components/OrganizerOnboardingModal';
 
@@ -40,6 +38,7 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
   const [activeTab, setActiveTab] = useState<OrganizerTab>(initialTab);
   const [isCreateOrgOpen, setIsCreateOrgOpen] = useState(false);
   const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
+  const [subpageTitle, setSubpageTitle] = useState<string | null>(null);
 
   // Data states for active organization with default safe fallbacks
   const [metrics, setMetrics] = useState({
@@ -102,7 +101,7 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
 
   const effectiveOrg: Organization = activeOrg || {
     id: `org_default_${user?.id || 'guest'}`,
-    name: 'My Organization',
+    name: 'Flytimefest',
     type: 'AGENCY' as const,
     country: 'Nigeria',
     created_by: user?.id || 'guest',
@@ -119,10 +118,13 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
       activeTab={activeTab}
       onTabChange={(tab) => {
         setActiveTab(tab);
+        setSubpageTitle(null);
         const subpath = tab === 'overview' ? '/organizer/dashboard' : `/organizer/${tab}`;
         window.history.pushState({}, '', subpath);
       }}
       onSwitchToAttendee={onSwitchToAttendee}
+      subpageTitle={subpageTitle}
+      onBackToSettingsHub={() => setSubpageTitle(null)}
     >
       {activeTab === 'overview' && (
         <OrganizerOverview
@@ -146,26 +148,20 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
         />
       )}
 
-      {activeTab === 'orders' && (
-        <OrganizerOrdersAttendees orders={orders} attendees={attendees} />
-      )}
+      {activeTab === 'analytics' && <OrganizerAnalytics />}
+
+      {activeTab === 'orders' && <OrganizerTicketSales orders={orders} />}
 
       {activeTab === 'scanner' && (
-        <OrganizerCheckInScanner events={events} userId={user?.id || ''} />
+        <OrganizerCheckIns events={events} userId={user?.id || ''} />
       )}
-
-      {activeTab === 'finance' && (
-        <OrganizerFinance orgId={effectiveOrg.id} totalRevenue={metrics.totalRevenue} />
-      )}
-
-      {activeTab === 'team' && (
-        <OrganizerTeam orgId={effectiveOrg.id} userId={user?.id || ''} />
-      )}
-
-      {activeTab === 'audit' && <OrganizerAuditLogs orgId={effectiveOrg.id} />}
 
       {activeTab === 'settings' && (
-        <OrganizerSettings activeOrg={effectiveOrg} onRefreshOrg={loadOrgData} />
+        <OrganizerSettings
+          activeOrg={effectiveOrg}
+          onRefreshOrg={loadOrgData}
+          onSubSectionChange={(title) => setSubpageTitle(title)}
+        />
       )}
 
       {/* Modals */}
