@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Ticket, User, Layers, LogOut, ChevronDown, ShieldCheck, Menu, X, KeyRound } from 'lucide-react';
+import { Ticket, User, Layers, LogOut, ChevronDown, ShieldCheck, Menu, X, Building2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
@@ -81,6 +81,18 @@ export const Header: React.FC<HeaderProps> = ({ currentView, onNavigate, myTicke
             </button>
 
             <button
+              onClick={() => onNavigate('organizer-dashboard')}
+              className={`text-sm font-bold transition-colors flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border ${
+                currentView === 'organizer-dashboard'
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-slate-50 text-slate-800 hover:bg-slate-100 border-slate-200'
+              } cursor-pointer`}
+            >
+              <Building2 className="w-4 h-4 text-[#00b894]" />
+              <span>Organizer Portal</span>
+            </button>
+
+            <button
               onClick={() => onNavigate('architecture')}
               className="hidden lg:flex items-center space-x-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer font-medium"
             >
@@ -121,6 +133,14 @@ export const Header: React.FC<HeaderProps> = ({ currentView, onNavigate, myTicke
                     </div>
 
                     <button
+                      onClick={() => { setIsDropdownOpen(false); onNavigate('organizer-dashboard'); }}
+                      className="w-full text-left px-4 py-2 text-xs text-slate-900 font-bold hover:bg-slate-50 flex items-center space-x-2 cursor-pointer bg-slate-50/80 my-1"
+                    >
+                      <Building2 className="w-4 h-4 text-[#00b894]" />
+                      <span>Organizer Dashboard</span>
+                    </button>
+
+                    <button
                       onClick={() => { setIsDropdownOpen(false); onNavigate('my-tickets'); }}
                       className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center space-x-2 font-medium cursor-pointer"
                     >
@@ -151,6 +171,13 @@ export const Header: React.FC<HeaderProps> = ({ currentView, onNavigate, myTicke
             ) : (
               /* Unauthenticated User Navigation Buttons */
               <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => onNavigate('organizer-dashboard')}
+                  className="hidden sm:flex items-center space-x-1.5 text-xs font-bold text-[#00b894] hover:text-[#00a383] px-3 py-2 rounded-xl border border-[#00b894]/30 hover:bg-[#00b894]/5 transition-colors cursor-pointer"
+                >
+                  <Building2 className="w-3.5 h-3.5" />
+                  <span>Organizer Portal</span>
+                </button>
                 <button
                   onClick={() => onNavigate('signin')}
                   className="text-xs sm:text-sm font-bold text-slate-700 hover:text-slate-900 px-4 py-2 rounded-xl transition-colors cursor-pointer"
@@ -200,6 +227,14 @@ export const Header: React.FC<HeaderProps> = ({ currentView, onNavigate, myTicke
                 {myTicketsCount}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => { setIsMobileMenuOpen(false); onNavigate('organizer-dashboard'); }}
+            className="w-full text-left px-3 py-2 text-sm font-bold text-[#00b894] bg-slate-50 rounded-xl flex items-center space-x-2"
+          >
+            <Building2 className="w-4 h-4 text-[#00b894]" />
+            <span>Organizer Portal</span>
           </button>
 
           <button
@@ -261,3 +296,4 @@ export const Header: React.FC<HeaderProps> = ({ currentView, onNavigate, myTicke
     </header>
   );
 };
+

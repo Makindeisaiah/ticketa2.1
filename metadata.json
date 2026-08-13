@@ -1,6 +1,6 @@
 {
   "name": "Ticketa 2.0",
-  "description": "Ticketa 2.0 Attendee Experience - Discover events, view event details, buy tickets with Paystack, generate QR tickets and manage ticket wallet.",
-  "requestFramePermissions": [],
+  "description": "Ticketa 2.0 - Complete Attendee Experience & Organizer Dashboard. Discover events, buy tickets with Paystack, generate QR tickets, manage event setups, track sales, and scan tickets using Supabase PostgreSQL.",
+  "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

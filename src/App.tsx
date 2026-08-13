@@ -11,6 +11,7 @@ import { SignInPage } from './pages/SignInPage';
 import { SignUpPage } from './pages/SignUpPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { OrganizerDashboardPage } from './pages/OrganizerDashboardPage';
 import { PaymentProcessingModal } from './components/PaymentProcessingModal';
 import { TicketWalletModal } from './components/TicketWalletModal';
 import { getAllEvents } from './services/eventService';
@@ -36,6 +37,7 @@ type AppView =
   | 'signup' 
   | 'forgot-password' 
   | 'profile' 
+  | 'organizer-dashboard'
   | 'architecture';
 
 function MainAppContent() {
@@ -94,7 +96,7 @@ function MainAppContent() {
     }
 
     // Protection check for protected routes
-    if (!user && (view === 'checkout' || view === 'profile')) {
+    if (!user && (view === 'checkout' || view === 'profile' || view === 'organizer-dashboard')) {
       setRedirectAfterAuth(view);
       setCurrentView('signin');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -297,6 +299,12 @@ function MainAppContent() {
         {currentView === 'profile' && (
           <ProfilePage
             onNavigateToTickets={() => handleNavigate('my-tickets')}
+          />
+        )}
+
+        {currentView === 'organizer-dashboard' && (
+          <OrganizerDashboardPage
+            onNavigateToAttendeeApp={() => handleNavigate('home')}
           />
         )}
 

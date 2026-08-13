@@ -164,3 +164,33 @@ export interface AuditLog {
   metadata?: Json | null;
   created_at: string;
 }
+
+export interface PayoutAccount {
+  id: string;
+  organization_id: string;
+  account_type: PayoutAccountType;
+  account_holder_name: string;
+  bank_name: string;
+  bank_code?: string | null;
+  account_number: string;
+  business_registration_number?: string | null;
+  tax_identification_number?: string | null;
+  is_verified: boolean;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Payout {
+  id: string;
+  organization_id: string;
+  payout_account_id: string;
+  amount: number;
+  currency: string;
+  status: PayoutStatus;
+  reference: string;
+  processed_at?: string | null;
+  failure_reason?: string | null;
+  created_at: string;
+  updated_at: string;
+}

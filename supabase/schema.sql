@@ -571,6 +571,50 @@ CREATE POLICY "Assigned staff can view & verify tickets for their assigned event
         )
     );
 
+-- Organization Members Policies
+CREATE POLICY "Organization members are viewable by authenticated users"
+    ON public.organization_members FOR SELECT USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can create organization member records"
+    ON public.organization_members FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Organization members can be managed by authenticated users"
+    ON public.organization_members FOR ALL USING (auth.role() = 'authenticated');
+
+-- Payout Accounts Policies
+CREATE POLICY "Payout accounts are viewable by authenticated users"
+    ON public.payout_accounts FOR SELECT USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Payout accounts can be created by authenticated users"
+    ON public.payout_accounts FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Payout accounts can be updated by authenticated users"
+    ON public.payout_accounts FOR UPDATE USING (auth.role() = 'authenticated');
+
+-- Payouts Policies
+CREATE POLICY "Payouts are viewable by authenticated users"
+    ON public.payouts FOR SELECT USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Payouts can be requested by authenticated users"
+    ON public.payouts FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+-- Event Staff Assignments Policies
+CREATE POLICY "Staff assignments are viewable by authenticated users"
+    ON public.event_staff_assignments FOR SELECT USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Staff assignments can be created by authenticated users"
+    ON public.event_staff_assignments FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Staff assignments can be removed by authenticated users"
+    ON public.event_staff_assignments FOR DELETE USING (auth.role() = 'authenticated');
+
+-- Audit Logs Policies
+CREATE POLICY "Audit logs are viewable by authenticated users"
+    ON public.audit_logs FOR SELECT USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Audit logs can be created by authenticated users"
+    ON public.audit_logs FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
 -- Check-ins Policies
 CREATE POLICY "Staff & Organizers can insert check-ins"
     ON public.check_ins FOR INSERT WITH CHECK (
@@ -581,8 +625,11 @@ CREATE POLICY "Staff & Organizers can insert check-ins"
             SELECT 1 FROM public.events e
             JOIN public.organization_members om ON om.organization_id = e.organization_id
             WHERE e.id = check_ins.event_id AND om.user_id = auth.uid()
-        )
+        ) OR auth.role() = 'authenticated'
     );
+
+CREATE POLICY "Check-ins are viewable by authenticated users"
+    ON public.check_ins FOR SELECT USING (auth.role() = 'authenticated');
 
 -- Notifications Policies
 CREATE POLICY "Users can read their own notifications"
