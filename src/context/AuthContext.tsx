@@ -102,9 +102,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     async function initAuth() {
       // Check URL parameters for email verification or password reset callback
       const href = window.location.href;
-      const isAuthCallback = href.includes('type=signup') || href.includes('type=recovery') || href.includes('/auth/callback') || href.includes('/callback') || href.includes('access_token=');
+      const isAuthCallback = href.includes('type=signup') || href.includes('type=recovery') || href.includes('/auth/callback') || href.includes('/callback') || href.includes('access_token=') || href.includes('code=');
 
-      if (isSupabaseConfigured) {
+      if (href.includes('error_description=') || href.includes('error=')) {
+        const match = href.match(/error_description=([^&]+)/);
+        const errorMsg = match ? decodeURIComponent(match[1].replace(/\+/g, ' ')) : 'Email verification failed or link expired.';
+        setAuthNotification({
+          type: 'error',
+          message: errorMsg,
+        });
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (isSupabaseConfigured) {
         try {
           const { data: { session: currentSession } } = await supabase.auth.getSession();
           if (mounted) {
@@ -125,8 +133,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     message: 'Your email address has been verified successfully! You are now logged in.',
                   });
                 }
-                // Clean up URL bar to avoid clutter
-                window.history.replaceState({}, document.title, window.location.pathname);
+                // Clean up URL bar to root path
+                window.history.replaceState({}, document.title, '/');
               }
             }
           }
@@ -160,13 +168,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 type: 'success',
                 message: 'Your email address has been verified successfully! Welcome to Ticketa.',
               });
-              window.history.replaceState({}, document.title, window.location.pathname);
+              window.history.replaceState({}, document.title, '/');
             } else if (href.includes('type=recovery')) {
               setAuthNotification({
                 type: 'info',
                 message: 'Authenticated via password reset link. Please update your password.',
               });
-              window.history.replaceState({}, document.title, window.location.pathname);
+              window.history.replaceState({}, document.title, '/');
             }
           }
         } else {
@@ -195,8 +203,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      // Use current window origin /callback to match custom configured redirect URL in Supabase Dashboard
-      const redirectUrl = `${window.location.origin}/callback`;
+      // Direct redirect URL to /auth/callback for production & preview environments
+      const redirectUrl = `${window.location.origin}/auth/callback`;
 
       const { data, error } = await supabase.auth.signUp({
         email,
