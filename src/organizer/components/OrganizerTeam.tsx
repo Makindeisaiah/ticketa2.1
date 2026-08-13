@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, ShieldCheck, Mail, UserCheck, AlertCircle, X } from 'lucide-react';
+import { Users, Plus, ShieldCheck, AlertCircle, X } from 'lucide-react';
 import { OrgMemberRole } from '../../types/database';
-import { getOrganizationMembers, inviteOrganizationMember } from '../../services/organizerService';
+import { getOrganizationMembers, inviteOrganizationMember } from '../services/organizerService';
 
 interface OrganizerTeamProps {
   orgId: string;

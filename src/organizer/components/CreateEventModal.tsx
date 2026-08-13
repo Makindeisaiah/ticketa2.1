@@ -17,7 +17,7 @@ import {
   getEventCategories,
   createOrganizerEvent,
   CreateEventInput,
-} from '../../services/organizerService';
+} from '../services/organizerService';
 
 interface CreateEventModalProps {
   orgId: string;
@@ -99,7 +99,6 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
     }
     loadCats();
 
-    // Default start and end date
     const now = new Date();
     now.setDate(now.getDate() + 7);
     now.setHours(18, 0, 0, 0);

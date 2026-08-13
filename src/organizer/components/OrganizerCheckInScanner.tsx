@@ -11,7 +11,7 @@ import {
   User,
   Clock,
 } from 'lucide-react';
-import { checkInTicket } from '../../services/organizerService';
+import { checkInTicket } from '../services/organizerService';
 
 interface OrganizerCheckInScannerProps {
   events: any[];
@@ -51,7 +51,6 @@ export const OrganizerCheckInScanner: React.FC<OrganizerCheckInScannerProps> = (
     }
   }, [events]);
 
-  // Handle manual submit
   const handleVerifyTicket = async (codeToTest?: string) => {
     const code = (codeToTest || ticketInput).trim();
     if (!code) return;
@@ -68,7 +67,6 @@ export const OrganizerCheckInScanner: React.FC<OrganizerCheckInScannerProps> = (
     setLastResult(res);
     setTicketInput('');
 
-    // Append to scan history
     setScanHistory((prev) => [
       {
         code: res.ticket_code || code,
@@ -80,7 +78,6 @@ export const OrganizerCheckInScanner: React.FC<OrganizerCheckInScannerProps> = (
     ]);
   };
 
-  // Camera toggle logic
   const toggleCamera = async () => {
     if (cameraActive) {
       if (streamRef.current) {
@@ -113,7 +110,6 @@ export const OrganizerCheckInScanner: React.FC<OrganizerCheckInScannerProps> = (
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      {/* Header Banner */}
       <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-2">
         <div className="flex items-center space-x-2 text-[#00b894] font-extrabold text-xs tracking-wider uppercase">
           <ShieldCheck className="w-4 h-4" />
@@ -125,7 +121,6 @@ export const OrganizerCheckInScanner: React.FC<OrganizerCheckInScannerProps> = (
         </p>
       </div>
 
-      {/* Select Active Event */}
       <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <label className="text-xs font-bold text-slate-300">Target Event for Scanner:</label>
         <select
@@ -141,7 +136,6 @@ export const OrganizerCheckInScanner: React.FC<OrganizerCheckInScannerProps> = (
         </select>
       </div>
 
-      {/* Last Result Banner */}
       {lastResult && (
         <div
           className={`p-6 rounded-3xl border shadow-2xl flex items-center space-x-4 animate-in fade-in zoom-in-95 duration-200 ${
@@ -167,9 +161,7 @@ export const OrganizerCheckInScanner: React.FC<OrganizerCheckInScannerProps> = (
         </div>
       )}
 
-      {/* Main Scanner Box */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Camera Scanner Viewport */}
         <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl flex flex-col items-center justify-center text-center relative overflow-hidden">
           <div className="w-full aspect-square bg-slate-900 border border-slate-800 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden">
             {cameraActive ? (
@@ -204,7 +196,6 @@ export const OrganizerCheckInScanner: React.FC<OrganizerCheckInScannerProps> = (
           </button>
         </div>
 
-        {/* Manual Code Input Form & Quick Test */}
         <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 space-y-6 shadow-xl flex flex-col justify-between">
           <div className="space-y-4">
             <h3 className="text-sm font-bold text-white flex items-center space-x-2">
@@ -223,7 +214,7 @@ export const OrganizerCheckInScanner: React.FC<OrganizerCheckInScannerProps> = (
                   value={ticketInput}
                   onChange={(e) => setTicketInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleVerifyTicket()}
-                  className="flex-1 bg-slate-900 border border-slate-800 focus:border-[#00b894] rounded-xl px-4 py-3 text-white text-xs font-mono font-bold outline-none"
+                  className="flex-1 bg-slate-900 border border-slate-800 focus:border-[#00b894] rounded-xl px-4 py-3 text-[#00b894] font-mono font-bold outline-none"
                 />
                 <button
                   onClick={() => handleVerifyTicket()}
@@ -236,7 +227,6 @@ export const OrganizerCheckInScanner: React.FC<OrganizerCheckInScannerProps> = (
             </div>
           </div>
 
-          {/* Session History Log */}
           <div className="space-y-3 pt-4 border-t border-slate-800/80">
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
               Recent Session Scan Logs ({scanHistory.length})

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, ShieldCheck, Clock } from 'lucide-react';
 import { AuditLog } from '../../types/database';
-import { getAuditLogs } from '../../services/organizerService';
+import { getAuditLogs } from '../services/organizerService';
 
 interface OrganizerAuditLogsProps {
   orgId: string;

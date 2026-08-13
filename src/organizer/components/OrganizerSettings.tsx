@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Building2, Save, CheckCircle2, AlertCircle, Globe, Phone, FileText } from 'lucide-react';
+import { Save, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Organization, OrganizerType } from '../../types/database';
 import { supabase } from '../../lib/supabase';
 
