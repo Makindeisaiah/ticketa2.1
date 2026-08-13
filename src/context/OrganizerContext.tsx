@@ -45,75 +45,129 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setError(null);
 
     try {
-      if (!isSupabaseConfigured) {
-        setOrganizations([]);
-        setActiveOrg(null);
-        setActiveRole(null);
-        setIsLoading(false);
-        return;
-      }
-
-      // Fetch user profile from public.profiles
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', targetUserId)
-        .maybeSingle();
-
-      if (profileData) {
-        setProfile(profileData as Profile);
-      }
-
-      // Fetch organizations created by user
-      const { data: createdOrgs } = await supabase
-        .from('organizations')
-        .select('*')
-        .eq('created_by', targetUserId);
-
-      // Fetch organization_members entries for this user
-      const { data: memberRows } = await supabase
-        .from('organization_members')
-        .select('organization_id, role, organizations(*)')
-        .eq('user_id', targetUserId);
-
+      let fetchedOrgs: Organization[] = [];
       const roles: Record<string, OrgMemberRole> = {};
-      const orgsMap = new Map<string, Organization>();
 
-      // Populate created orgs (default role OWNER if created_by matches)
-      (createdOrgs || []).forEach((org: Organization) => {
-        orgsMap.set(org.id, org);
-        roles[org.id] = 'OWNER';
-      });
+      if (isSupabaseConfigured) {
+        try {
+          // Fetch user profile from public.profiles
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', targetUserId)
+            .maybeSingle();
 
-      // Populate member orgs
-      (memberRows || []).forEach((row: any) => {
-        if (row.organizations) {
-          orgsMap.set(row.organizations.id, row.organizations);
-          roles[row.organizations.id] = row.role || 'MEMBER';
+          if (profileData) {
+            setProfile(profileData as Profile);
+          }
+
+          // Fetch organizations created by user
+          const { data: createdOrgs } = await supabase
+            .from('organizations')
+            .select('*')
+            .eq('created_by', targetUserId);
+
+          // Fetch organization_members entries for this user
+          const { data: memberRows } = await supabase
+            .from('organization_members')
+            .select('organization_id, role, organizations(*)')
+            .eq('user_id', targetUserId);
+
+          const orgsMap = new Map<string, Organization>();
+
+          (createdOrgs || []).forEach((org: Organization) => {
+            if (org && org.id) {
+              orgsMap.set(org.id, org);
+              roles[org.id] = 'OWNER';
+            }
+          });
+
+          (memberRows || []).forEach((row: any) => {
+            if (row && row.organizations && row.organizations.id) {
+              orgsMap.set(row.organizations.id, row.organizations);
+              roles[row.organizations.id] = row.role || 'MEMBER';
+            }
+          });
+
+          fetchedOrgs = Array.from(orgsMap.values());
+        } catch (dbErr) {
+          console.warn('Database organization query notice:', dbErr);
         }
+      }
+
+      // Read local storage saved organizations
+      const localKey = `organizer_local_orgs_${targetUserId}`;
+      let localOrgs: Organization[] = [];
+      try {
+        const stored = localStorage.getItem(localKey);
+        if (stored) {
+          localOrgs = JSON.parse(stored);
+        }
+      } catch (e) {
+        console.error('Error reading local orgs:', e);
+      }
+
+      // Combine fetched database orgs and local storage orgs
+      const combinedMap = new Map<string, Organization>();
+      fetchedOrgs.forEach((o) => combinedMap.set(o.id, o));
+      localOrgs.forEach((o) => combinedMap.set(o.id, o));
+
+      let allOrgs = Array.from(combinedMap.values());
+
+      // Guarantee at least one default organization for every logged in user
+      if (allOrgs.length === 0) {
+        let defaultName = 'My Organization';
+        try {
+          const userEmail = authUser?.email || '';
+          const pendingKey = `pending_organizer_${userEmail.trim().toLowerCase()}`;
+          const pendingRaw = localStorage.getItem(pendingKey);
+          if (pendingRaw) {
+            const pending = JSON.parse(pendingRaw);
+            if (pending.orgName) defaultName = pending.orgName;
+          } else if (userEmail) {
+            const namePart = userEmail.split('@')[0];
+            defaultName = `${namePart.charAt(0).toUpperCase() + namePart.slice(1)}'s Organization`;
+          }
+        } catch (e) {
+          // ignore parsing error
+        }
+
+        const defaultOrg: Organization = {
+          id: `org_default_${targetUserId}`,
+          name: defaultName,
+          type: 'AGENCY',
+          country: 'Nigeria',
+          created_by: targetUserId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        allOrgs = [defaultOrg];
+        try {
+          localStorage.setItem(localKey, JSON.stringify([defaultOrg]));
+        } catch (e) {
+          console.error('Error storing default org:', e);
+        }
+      }
+
+      allOrgs.forEach((o) => {
+        if (!roles[o.id]) roles[o.id] = 'OWNER';
       });
 
-      const allOrgs = Array.from(orgsMap.values());
       setOrganizations(allOrgs);
       setRolesMap(roles);
 
-      if (allOrgs.length > 0) {
-        // Retain existing active org if valid, else pick first
-        const currentActiveId = activeOrg?.id;
-        const matched = allOrgs.find((o) => o.id === currentActiveId) || allOrgs[0];
-        setActiveOrg(matched);
-        setActiveRole(roles[matched.id] || 'OWNER');
-      } else {
-        setActiveOrg(null);
-        setActiveRole(null);
-      }
+      const currentActiveId = activeOrg?.id;
+      const matched = allOrgs.find((o) => o.id === currentActiveId) || allOrgs[0];
+      setActiveOrg(matched);
+      setActiveRole(roles[matched.id] || 'OWNER');
     } catch (err: any) {
       console.error('Error loading organizer context:', err);
       setError(err.message || 'Failed to load organization context.');
     } finally {
       setIsLoading(false);
     }
-  }, [authUser?.id]);
+  }, [authUser?.id, authUser?.email, activeOrg?.id]);
 
   useEffect(() => {
     if (!authLoading) {

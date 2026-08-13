@@ -8,6 +8,7 @@ import {
   getOrganizationAttendees,
 } from '../services/organizerService';
 import { OrganizerLayout, OrganizerTab } from '../components/OrganizerLayout';
+import { Organization } from '../../types/database';
 import { OrganizerOverview } from '../components/OrganizerOverview';
 import { OrganizerEvents } from '../components/OrganizerEvents';
 import { CreateEventModal } from '../components/CreateEventModal';
@@ -18,7 +19,6 @@ import { OrganizerTeam } from '../components/OrganizerTeam';
 import { OrganizerAuditLogs } from '../components/OrganizerAuditLogs';
 import { OrganizerSettings } from '../components/OrganizerSettings';
 import { OrganizerOnboardingModal } from '../components/OrganizerOnboardingModal';
-import { Building2, Plus } from 'lucide-react';
 
 interface OrganizerDashboardPageProps {
   onSwitchToAttendee: () => void;
@@ -100,58 +100,20 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
     }
   }, [activeOrg?.id]);
 
-  // If user has no organizations, show onboarding prompt
-  if (!activeOrg) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-6 antialiased">
-        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 space-y-6 text-center shadow-2xl relative">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#00b894] to-emerald-400 text-white font-black flex items-center justify-center text-2xl mx-auto shadow-lg">
-            <Building2 className="w-8 h-8" />
-          </div>
-
-          <div className="space-y-2">
-            <h2 className="text-2xl font-black text-white">Welcome to Ticketa Organizer</h2>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              You haven't created an organization profile yet. Create an organization to start publishing events, issuing tickets, and collecting sales revenue.
-            </p>
-          </div>
-
-          <div className="space-y-3 pt-2">
-            <button
-              onClick={() => setIsCreateOrgOpen(true)}
-              className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition-all flex items-center justify-center space-x-2 text-xs cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create Organization Profile</span>
-            </button>
-
-            <button
-              onClick={onSwitchToAttendee}
-              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 px-6 rounded-xl transition-all text-xs cursor-pointer"
-            >
-              Back to Attendee Website
-            </button>
-          </div>
-        </div>
-
-        {isCreateOrgOpen && user?.id && (
-          <OrganizerOnboardingModal
-            userId={user.id}
-            onSuccess={() => {
-              setIsCreateOrgOpen(false);
-              refreshOrganizations(user.id);
-            }}
-            onClose={() => setIsCreateOrgOpen(false)}
-          />
-        )}
-      </div>
-    );
-  }
+  const effectiveOrg: Organization = activeOrg || {
+    id: `org_default_${user?.id || 'guest'}`,
+    name: 'My Organization',
+    type: 'AGENCY' as const,
+    country: 'Nigeria',
+    created_by: user?.id || 'guest',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
 
   return (
     <OrganizerLayout
-      organizations={organizations}
-      activeOrg={activeOrg}
+      organizations={organizations.length > 0 ? organizations : [effectiveOrg]}
+      activeOrg={effectiveOrg}
       onSelectOrg={(org) => setActiveOrganization(org.id)}
       onOpenCreateOrg={() => setIsCreateOrgOpen(true)}
       activeTab={activeTab}
@@ -177,7 +139,7 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
       {activeTab === 'events' && (
         <OrganizerEvents
           events={events}
-          orgId={activeOrg.id}
+          orgId={effectiveOrg.id}
           userId={user?.id || ''}
           onOpenCreateModal={() => setIsCreateEventOpen(true)}
           onRefreshEvents={loadOrgData}
@@ -193,17 +155,17 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
       )}
 
       {activeTab === 'finance' && (
-        <OrganizerFinance orgId={activeOrg.id} totalRevenue={metrics.totalRevenue} />
+        <OrganizerFinance orgId={effectiveOrg.id} totalRevenue={metrics.totalRevenue} />
       )}
 
       {activeTab === 'team' && (
-        <OrganizerTeam orgId={activeOrg.id} userId={user?.id || ''} />
+        <OrganizerTeam orgId={effectiveOrg.id} userId={user?.id || ''} />
       )}
 
-      {activeTab === 'audit' && <OrganizerAuditLogs orgId={activeOrg.id} />}
+      {activeTab === 'audit' && <OrganizerAuditLogs orgId={effectiveOrg.id} />}
 
       {activeTab === 'settings' && (
-        <OrganizerSettings activeOrg={activeOrg} onRefreshOrg={loadOrgData} />
+        <OrganizerSettings activeOrg={effectiveOrg} onRefreshOrg={loadOrgData} />
       )}
 
       {/* Modals */}
