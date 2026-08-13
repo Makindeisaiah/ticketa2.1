@@ -1,38 +1,63 @@
 import React from 'react';
-import { AuthProvider, useAuth } from '../context/AuthContext';
+import { OrganizerProvider } from '../context/OrganizerContext';
+import { OrganizerErrorBoundary } from './components/OrganizerErrorBoundary';
+import { OrganizerRouteGuard } from './components/OrganizerRouteGuard';
 import { OrganizerDashboardPage } from './pages/OrganizerDashboardPage';
+import { OrganizerTab } from './components/OrganizerLayout';
+import { OrganizerAuth } from './components/OrganizerAuth';
 
 interface OrganizerAppProps {
   onSwitchToAttendeeWebsite?: () => void;
+  pathname?: string;
 }
 
-const OrganizerAppContent: React.FC<OrganizerAppProps> = ({ onSwitchToAttendeeWebsite }) => {
-  const { user, loading } = useAuth();
+export const OrganizerApp: React.FC<OrganizerAppProps> = ({
+  onSwitchToAttendeeWebsite,
+  pathname = window.location.pathname,
+}) => {
+  const handleSwitchToAttendee = () => {
+    if (onSwitchToAttendeeWebsite) {
+      onSwitchToAttendeeWebsite();
+    } else {
+      window.history.pushState({}, '', '/');
+      window.dispatchEvent(new Event('popstate'));
+    }
+  };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-4 text-slate-100 p-4">
-        <div className="w-10 h-10 border-4 border-[#00b894] border-t-transparent rounded-full animate-spin" />
-        <p className="text-xs font-bold text-slate-400">Authenticating Organizer Session...</p>
-      </div>
-    );
-  }
+  // Determine active tab or auth mode based on pathname
+  let initialTab: OrganizerTab = 'overview';
+  if (pathname.includes('/organizer/events')) initialTab = 'events';
+  else if (pathname.includes('/organizer/orders') || pathname.includes('/organizer/attendees')) initialTab = 'orders';
+  else if (pathname.includes('/organizer/scanner')) initialTab = 'scanner';
+  else if (pathname.includes('/organizer/staff') || pathname.includes('/organizer/team')) initialTab = 'team';
+  else if (pathname.includes('/organizer/finance')) initialTab = 'finance';
+  else if (pathname.includes('/organizer/audit')) initialTab = 'audit';
+  else if (pathname.includes('/organizer/settings')) initialTab = 'settings';
+
+  const isAuthRoute = pathname === '/organizer/login' || pathname === '/organizer/signup';
 
   return (
-    <OrganizerDashboardPage
-      onSwitchToAttendee={() => {
-        if (onSwitchToAttendeeWebsite) {
-          onSwitchToAttendeeWebsite();
-        } else {
-          window.location.href = '/';
-        }
-      }}
-    />
+    <OrganizerErrorBoundary>
+      <OrganizerProvider>
+        {isAuthRoute ? (
+          <OrganizerAuth
+            initialMode={pathname === '/organizer/signup' ? 'signup' : 'signin'}
+            onSuccess={() => {
+              window.history.pushState({}, '', '/organizer/dashboard');
+              window.dispatchEvent(new Event('popstate'));
+            }}
+          />
+        ) : (
+          <OrganizerRouteGuard>
+            <OrganizerDashboardPage
+              initialTab={initialTab}
+              onSwitchToAttendee={handleSwitchToAttendee}
+            />
+          </OrganizerRouteGuard>
+        )}
+      </OrganizerProvider>
+    </OrganizerErrorBoundary>
   );
-};
-
-export const OrganizerApp: React.FC<OrganizerAppProps> = (props) => {
-  return <OrganizerAppContent {...props} />;
 };
 
 export default OrganizerApp;

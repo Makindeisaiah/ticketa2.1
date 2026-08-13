@@ -114,7 +114,7 @@ export const OrganizerFinance: React.FC<OrganizerFinanceProps> = ({ orgId, total
     .reduce((a, b) => a + Number(b.amount || 0), 0);
 
   const completedPayoutsSum = payouts
-    .filter((p) => p.status === 'COMPLETED')
+    .filter((p) => p.status === 'PAID')
     .reduce((a, b) => a + Number(b.amount || 0), 0);
 
   const availableBalance = Math.max(0, totalRevenue - completedPayoutsSum - pendingPayoutsSum);
@@ -252,7 +252,7 @@ export const OrganizerFinance: React.FC<OrganizerFinanceProps> = ({ orgId, total
                     <td className="py-3">
                       <span
                         className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
-                          po.status === 'COMPLETED'
+                          po.status === 'PAID'
                             ? 'bg-emerald-500/10 text-emerald-400'
                             : 'bg-amber-500/10 text-amber-400'
                         }`}

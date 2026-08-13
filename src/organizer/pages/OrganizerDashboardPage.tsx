@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Organization } from '../../types/database';
+import { useOrganizer } from '../../context/OrganizerContext';
 import {
-  getUserOrganizations,
   getOrganizationMetrics,
   getOrganizationEvents,
   getOrganizationOrders,
@@ -19,103 +18,87 @@ import { OrganizerTeam } from '../components/OrganizerTeam';
 import { OrganizerAuditLogs } from '../components/OrganizerAuditLogs';
 import { OrganizerSettings } from '../components/OrganizerSettings';
 import { OrganizerOnboardingModal } from '../components/OrganizerOnboardingModal';
-import { OrganizerAuth } from '../components/OrganizerAuth';
-import { Building2, Plus, Sparkles, AlertCircle } from 'lucide-react';
+import { Building2, Plus } from 'lucide-react';
 
 interface OrganizerDashboardPageProps {
   onSwitchToAttendee: () => void;
+  initialTab?: OrganizerTab;
 }
 
 export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
   onSwitchToAttendee,
+  initialTab = 'overview',
 }) => {
-  const { user, loading: authLoading } = useAuth();
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [activeOrg, setActiveOrg] = useState<Organization | null>(null);
-  const [activeTab, setActiveTab] = useState<OrganizerTab>('overview');
+  const { user } = useAuth();
+  const {
+    organizations,
+    organization: activeOrg,
+    setActiveOrganization,
+    refreshOrganizations,
+  } = useOrganizer();
 
-  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<OrganizerTab>(initialTab);
   const [isCreateOrgOpen, setIsCreateOrgOpen] = useState(false);
   const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
 
-  // Load User's Organizations
-  const loadUserOrgs = async (overrideUserId?: string) => {
-    const targetUserId = overrideUserId || user?.id;
-    if (!targetUserId) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const orgs = await getUserOrganizations(targetUserId);
-      setOrganizations(orgs);
-
-      if (orgs.length > 0) {
-        if (!activeOrg || !orgs.find((o) => o.id === activeOrg.id)) {
-          setActiveOrg(orgs[0]);
-        }
-      } else {
-        setActiveOrg(null);
-      }
-    } catch (e) {
-      console.error('Error fetching user organizations:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Data states for active organization with default safe fallbacks
+  const [metrics, setMetrics] = useState({
+    totalRevenue: 0,
+    ticketsSold: 0,
+    totalEvents: 0,
+    activeEvents: 0,
+    totalCheckedIn: 0,
+  });
+  const [events, setEvents] = useState<any[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [attendees, setAttendees] = useState<any[]>([]);
+  const [dataLoading, setDataLoading] = useState<boolean>(false);
 
   useEffect(() => {
-    if (user?.id) {
-      loadUserOrgs();
-    }
-  }, [user?.id]);
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
-  // Auth Loading state
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-4 text-slate-100 p-4">
-        <div className="w-10 h-10 border-4 border-[#00b894] border-t-transparent rounded-full animate-spin" />
-        <p className="text-xs font-bold text-slate-400">Authenticating Organizer Session...</p>
-      </div>
-    );
-  }
-
-  // If user is not logged in, render dedicated Organizer Portal Auth Screen
-  if (!user) {
-    return <OrganizerAuth onSuccess={(u) => loadUserOrgs(u?.id)} />;
-  }
-
-  // Load Organization Specific Data
+  // Load Organization Specific Data safely
   const loadOrgData = async () => {
     if (!activeOrg?.id) return;
+    setDataLoading(true);
 
-    const [m, evts, ords, atts] = await Promise.all([
-      getOrganizationMetrics(activeOrg.id),
-      getOrganizationEvents(activeOrg.id),
-      getOrganizationOrders(activeOrg.id),
-      getOrganizationAttendees(activeOrg.id),
-    ]);
+    try {
+      const [m, evts, ords, atts] = await Promise.all([
+        getOrganizationMetrics(activeOrg.id).catch(() => ({
+          totalRevenue: 0,
+          ticketsSold: 0,
+          totalEvents: 0,
+          activeEvents: 0,
+          totalCheckedIn: 0,
+        })),
+        getOrganizationEvents(activeOrg.id).catch(() => []),
+        getOrganizationOrders(activeOrg.id).catch(() => []),
+        getOrganizationAttendees(activeOrg.id).catch(() => []),
+      ]);
 
-    setMetrics(m);
-    setEvents(evts);
-    setOrders(ords);
-    setAttendees(atts);
+      setMetrics(m || {
+        totalRevenue: 0,
+        ticketsSold: 0,
+        totalEvents: 0,
+        activeEvents: 0,
+        totalCheckedIn: 0,
+      });
+      setEvents(evts || []);
+      setOrders(ords || []);
+      setAttendees(atts || []);
+    } catch (e) {
+      console.error('Error fetching org data:', e);
+    } finally {
+      setDataLoading(false);
+    }
   };
 
   useEffect(() => {
-    if (activeOrg) {
+    if (activeOrg?.id) {
       loadOrgData();
     }
   }, [activeOrg?.id]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-4 text-slate-100 p-4">
-        <div className="w-10 h-10 border-4 border-[#00b894] border-t-transparent rounded-full animate-spin" />
-        <p className="text-xs font-bold text-slate-400">Loading Organizer Workspace...</p>
-      </div>
-    );
-  }
 
   // If user has no organizations, show onboarding prompt
   if (!activeOrg) {
@@ -128,17 +111,17 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
 
           <div className="space-y-2">
             <h2 className="text-2xl font-black text-white">Welcome to Ticketa Organizer</h2>
-            <p className="text-xs text-slate-400">
-              You haven't created an organization yet. Create your organizer profile to start publishing events, issuing ticket tiers, and collecting revenue.
+            <p className="text-xs text-slate-400 leading-relaxed">
+              You haven't created an organization profile yet. Create an organization to start publishing events, issuing tickets, and collecting sales revenue.
             </p>
           </div>
 
           <div className="space-y-3 pt-2">
             <button
               onClick={() => setIsCreateOrgOpen(true)}
-              className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition-all flex items-center justify-center space-x-2 cursor-pointer"
+              className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition-all flex items-center justify-center space-x-2 text-xs cursor-pointer"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="w-4 h-4" />
               <span>Create Organization Profile</span>
             </button>
 
@@ -154,9 +137,9 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
         {isCreateOrgOpen && user?.id && (
           <OrganizerOnboardingModal
             userId={user.id}
-            onSuccess={(newOrg) => {
+            onSuccess={() => {
               setIsCreateOrgOpen(false);
-              loadUserOrgs();
+              refreshOrganizations(user.id);
             }}
             onClose={() => setIsCreateOrgOpen(false)}
           />
@@ -169,10 +152,14 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
     <OrganizerLayout
       organizations={organizations}
       activeOrg={activeOrg}
-      onSelectOrg={(org) => setActiveOrg(org)}
+      onSelectOrg={(org) => setActiveOrganization(org.id)}
       onOpenCreateOrg={() => setIsCreateOrgOpen(true)}
       activeTab={activeTab}
-      onTabChange={(tab) => setActiveTab(tab)}
+      onTabChange={(tab) => {
+        setActiveTab(tab);
+        const subpath = tab === 'overview' ? '/organizer/dashboard' : `/organizer/${tab}`;
+        window.history.pushState({}, '', subpath);
+      }}
       onSwitchToAttendee={onSwitchToAttendee}
     >
       {activeTab === 'overview' && (
@@ -180,7 +167,10 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
           metrics={metrics}
           events={events}
           onOpenCreateModal={() => setIsCreateEventOpen(true)}
-          onNavigateTab={(tab) => setActiveTab(tab)}
+          onNavigateTab={(tab) => {
+            setActiveTab(tab);
+            window.history.pushState({}, '', `/organizer/${tab}`);
+          }}
         />
       )}
 
@@ -220,9 +210,9 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
       {isCreateOrgOpen && user?.id && (
         <OrganizerOnboardingModal
           userId={user.id}
-          onSuccess={(newOrg) => {
+          onSuccess={() => {
             setIsCreateOrgOpen(false);
-            loadUserOrgs();
+            refreshOrganizations(user.id);
           }}
           onClose={() => setIsCreateOrgOpen(false)}
         />

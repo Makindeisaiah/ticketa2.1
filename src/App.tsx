@@ -11,7 +11,7 @@ import { SignInPage } from './pages/SignInPage';
 import { SignUpPage } from './pages/SignUpPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ProfilePage } from './pages/ProfilePage';
-import { OrganizerDashboardPage } from './pages/OrganizerDashboardPage';
+import { OrganizerApp } from './organizer/OrganizerApp';
 import { PaymentProcessingModal } from './components/PaymentProcessingModal';
 import { TicketWalletModal } from './components/TicketWalletModal';
 import { getAllEvents } from './services/eventService';
@@ -41,9 +41,30 @@ type AppView =
 
 function MainAppContent() {
   const { user, isConfigured, authNotification, clearAuthNotification } = useAuth();
-  const [currentView, setCurrentView] = useState<AppView>('home');
+
+  const getInitialView = (): AppView => {
+    const path = window.location.pathname;
+    if (path === '/login' || path === '/signin') return 'signin';
+    if (path === '/signup') return 'signup';
+    if (path === '/forgot-password') return 'forgot-password';
+    if (path === '/tickets' || path === '/my-tickets') return 'my-tickets';
+    if (path === '/profile') return 'profile';
+    if (path === '/events') return 'browse';
+    if (path === '/checkout') return 'checkout';
+    return 'home';
+  };
+
+  const [currentView, setCurrentView] = useState<AppView>(getInitialView);
   const [events, setEvents] = useState<SeedEventData[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<SeedEventData | null>(null);
+
+  useEffect(() => {
+    const handleLocationChange = () => {
+      setCurrentView(getInitialView());
+    };
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
+  }, []);
   
   // Checkout & Payment states
   const [selectedQuantities, setSelectedQuantities] = useState<Record<string, number>>({});
@@ -98,8 +119,25 @@ function MainAppContent() {
     if (!user && (view === 'checkout' || view === 'profile')) {
       setRedirectAfterAuth(view);
       setCurrentView('signin');
+      window.history.pushState({}, '', '/login');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
+    }
+
+    const pathMap: Record<AppView, string> = {
+      home: '/',
+      browse: '/events',
+      detail: selectedEvent ? `/events/${selectedEvent.id}` : '/events',
+      checkout: '/checkout',
+      'my-tickets': '/tickets',
+      signin: '/login',
+      signup: '/signup',
+      'forgot-password': '/forgot-password',
+      profile: '/profile',
+      architecture: '/architecture',
+    };
+    if (pathMap[view]) {
+      window.history.pushState({}, '', pathMap[view]);
     }
 
     setCurrentView(view);
@@ -444,8 +482,9 @@ export default function App() {
   return (
     <AuthProvider>
       {isOrganizerRoute ? (
-        <OrganizerDashboardPage
-          onNavigateToAttendeeApp={() => {
+        <OrganizerApp
+          pathname={pathname}
+          onSwitchToAttendeeWebsite={() => {
             window.history.pushState({}, '', '/');
             setPathname('/');
           }}

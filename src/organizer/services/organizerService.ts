@@ -127,11 +127,6 @@ export async function createOrganization(
       role: 'OWNER',
     });
 
-    await supabase
-      .from('profiles')
-      .update({ role: 'ORGANIZER', updated_at: new Date().toISOString() })
-      .eq('id', userId);
-
     await supabase.from('audit_logs').insert({
       actor_id: userId,
       organization_id: org.id,

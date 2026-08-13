@@ -24,13 +24,14 @@ import { createOrganization, addPayoutAccount } from '../services/organizerServi
 
 interface OrganizerAuthProps {
   onSuccess?: (user?: any) => void;
+  initialMode?: 'signin' | 'signup';
 }
 
-export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess }) => {
+export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initialMode = 'signup' }) => {
   const { signIn, signUpAttendee, isConfigured } = useAuth();
   
   // 'signin' or 'signup'
-  const [mode, setMode] = useState<'signin' | 'signup'>('signup');
+  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
   
   // Step in signup flow (1 to 4)
   const [step, setStep] = useState<number>(1);
