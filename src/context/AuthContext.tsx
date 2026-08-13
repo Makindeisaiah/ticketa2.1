@@ -25,7 +25,7 @@ interface AuthContextType {
   authNotification: { type: 'success' | 'info' | 'error'; message: string } | null;
   clearAuthNotification: () => void;
   signUpAttendee: (data: SignUpData) => Promise<{ success: boolean; requiresEmailVerification?: boolean; error?: string }>;
-  signIn: (data: SignInData) => Promise<{ success: boolean; error?: string }>;
+  signIn: (data: SignInData) => Promise<{ success: boolean; user?: AuthUser; error?: string }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   updatePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
@@ -72,7 +72,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             full_name: fullName,
             email: supabaseUser.email || '',
             phone_number: phoneNumber,
-            role: 'ATTENDEE',
+            role,
             is_email_verified: Boolean(supabaseUser.email_confirmed_at),
           });
         }
@@ -316,7 +316,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const authUser = await fetchUserProfile(data.user);
         setUser(authUser);
         setSession(data.session);
-        return { success: true };
+        return { success: true, user: authUser };
       }
 
       return { success: false, error: 'Invalid login response.' };

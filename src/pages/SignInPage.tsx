@@ -38,7 +38,10 @@ export const SignInPage: React.FC<SignInPageProps> = ({
     setLoading(false);
 
     if (result.success) {
-      if (onSuccessRedirect) {
+      if (result.user?.role === 'ORGANIZER') {
+        window.history.pushState({}, '', '/organizer');
+        window.dispatchEvent(new Event('popstate'));
+      } else if (onSuccessRedirect) {
         onSuccessRedirect();
       }
     } else {

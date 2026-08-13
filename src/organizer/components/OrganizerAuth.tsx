@@ -23,7 +23,7 @@ import { useAuth } from '../../context/AuthContext';
 import { createOrganization, addPayoutAccount } from '../services/organizerService';
 
 interface OrganizerAuthProps {
-  onSuccess?: () => void;
+  onSuccess?: (user?: any) => void;
 }
 
 export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess }) => {
@@ -188,37 +188,40 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess }) => {
     setLoading(true);
     const result = await signIn({ email: signInEmail, password: signInPassword });
 
-    if (result.success && result.user) {
-      // Check for pending organization setup
-      const pendingKey = `pending_organizer_${signInEmail.trim().toLowerCase()}`;
-      const pendingRaw = localStorage.getItem(pendingKey);
-      if (pendingRaw) {
-        try {
-          const pending = JSON.parse(pendingRaw);
-          const orgRes = await createOrganization(result.user.id, {
-            name: pending.orgName || 'My Organization',
-            type: (pending.orgType === 'Event Agency' ? 'AGENCY' : pending.orgType === 'Registered Business' ? 'BUSINESS' : 'INDIVIDUAL') as any,
-            country: pending.country || 'Nigeria',
-            phone_number: pending.phoneNumber || '',
-          });
-
-          if (orgRes.success && orgRes.organization && pending.accountNumber) {
-            await addPayoutAccount(orgRes.organization.id, {
-              account_type: pending.accountHolderType === 'Individual' ? 'INDIVIDUAL' : 'BUSINESS',
-              account_holder_name: pending.holderFullName || pending.fullName,
-              bank_name: pending.bankName || 'Guaranty Trust Bank',
-              bank_code: '058',
-              account_number: pending.accountNumber,
+    if (result.success) {
+      const activeUser = result.user;
+      if (activeUser?.id) {
+        // Check for pending organization setup
+        const pendingKey = `pending_organizer_${signInEmail.trim().toLowerCase()}`;
+        const pendingRaw = localStorage.getItem(pendingKey);
+        if (pendingRaw) {
+          try {
+            const pending = JSON.parse(pendingRaw);
+            const orgRes = await createOrganization(activeUser.id, {
+              name: pending.orgName || 'My Organization',
+              type: (pending.orgType === 'Event Agency' ? 'AGENCY' : pending.orgType === 'Registered Business' ? 'BUSINESS' : 'INDIVIDUAL') as any,
+              country: pending.country || 'Nigeria',
+              phone_number: pending.phoneNumber || '',
             });
+
+            if (orgRes.success && orgRes.organization && pending.accountNumber) {
+              await addPayoutAccount(orgRes.organization.id, {
+                account_type: pending.accountHolderType === 'Individual' ? 'INDIVIDUAL' : 'BUSINESS',
+                account_holder_name: pending.holderFullName || pending.fullName,
+                bank_name: pending.bankName || 'Guaranty Trust Bank',
+                bank_code: '058',
+                account_number: pending.accountNumber,
+              });
+            }
+            localStorage.removeItem(pendingKey);
+          } catch (err) {
+            console.error('Failed to apply pending organization setup:', err);
           }
-          localStorage.removeItem(pendingKey);
-        } catch (err) {
-          console.error('Failed to apply pending organization setup:', err);
         }
       }
 
       setLoading(false);
-      if (onSuccess) onSuccess();
+      if (onSuccess) onSuccess(activeUser);
     } else {
       setLoading(false);
       setErrorMsg(result.error || 'Invalid email or password.');

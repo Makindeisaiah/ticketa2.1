@@ -29,7 +29,7 @@ interface OrganizerDashboardPageProps {
 export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
   onSwitchToAttendee,
 }) => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [activeOrg, setActiveOrg] = useState<Organization | null>(null);
   const [activeTab, setActiveTab] = useState<OrganizerTab>('overview');
@@ -38,43 +38,52 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
   const [isCreateOrgOpen, setIsCreateOrgOpen] = useState(false);
   const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
 
-  // If user is not logged in, render dedicated Organizer Portal Auth Screen
-  if (!user) {
-    return <OrganizerAuth onSuccess={() => loadUserOrgs()} />;
-  }
-
-  // Data states for active organization
-  const [metrics, setMetrics] = useState({
-    totalRevenue: 0,
-    ticketsSold: 0,
-    totalEvents: 0,
-    activeEvents: 0,
-    totalCheckedIn: 0,
-  });
-  const [events, setEvents] = useState<any[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
-  const [attendees, setAttendees] = useState<any[]>([]);
-
   // Load User's Organizations
-  const loadUserOrgs = async () => {
-    if (!user?.id) return;
-    setLoading(true);
-    const orgs = await getUserOrganizations(user.id);
-    setOrganizations(orgs);
-
-    if (orgs.length > 0) {
-      if (!activeOrg || !orgs.find((o) => o.id === activeOrg.id)) {
-        setActiveOrg(orgs[0]);
-      }
-    } else {
-      setActiveOrg(null);
+  const loadUserOrgs = async (overrideUserId?: string) => {
+    const targetUserId = overrideUserId || user?.id;
+    if (!targetUserId) {
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+    setLoading(true);
+    try {
+      const orgs = await getUserOrganizations(targetUserId);
+      setOrganizations(orgs);
+
+      if (orgs.length > 0) {
+        if (!activeOrg || !orgs.find((o) => o.id === activeOrg.id)) {
+          setActiveOrg(orgs[0]);
+        }
+      } else {
+        setActiveOrg(null);
+      }
+    } catch (e) {
+      console.error('Error fetching user organizations:', e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    loadUserOrgs();
+    if (user?.id) {
+      loadUserOrgs();
+    }
   }, [user?.id]);
+
+  // Auth Loading state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-4 text-slate-100 p-4">
+        <div className="w-10 h-10 border-4 border-[#00b894] border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs font-bold text-slate-400">Authenticating Organizer Session...</p>
+      </div>
+    );
+  }
+
+  // If user is not logged in, render dedicated Organizer Portal Auth Screen
+  if (!user) {
+    return <OrganizerAuth onSuccess={(u) => loadUserOrgs(u?.id)} />;
+  }
 
   // Load Organization Specific Data
   const loadOrgData = async () => {
