@@ -125,7 +125,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
               if (isAuthCallback) {
                 // Extract redirect parameter if present, otherwise check user role or current path
-                let destination = '/';
+                let destination = authUser.role === 'ORGANIZER' ? '/organizer' : '/';
                 try {
                   const urlObj = new URL(href);
                   const redirectParam = urlObj.searchParams.get('redirect');
@@ -179,7 +179,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
             const href = window.location.href;
             if (href.includes('type=signup') || href.includes('/auth/callback') || href.includes('/callback') || href.includes('code=')) {
-              let destination = '/';
+              let destination = authUser.role === 'ORGANIZER' ? '/organizer' : '/';
               try {
                 const urlObj = new URL(href);
                 const redirectParam = urlObj.searchParams.get('redirect');

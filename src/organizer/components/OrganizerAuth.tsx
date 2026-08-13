@@ -67,54 +67,63 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess }) => {
   const [isSuccessUnverified, setIsSuccessUnverified] = useState(false);
 
   // Complete Signup Process
-  const handleCompleteRegistration = async (passedUserId?: string) => {
+  const handleCompleteRegistration = async (includeBankDetails: boolean = true) => {
     setLoading(true);
     setErrorMsg('');
 
     try {
-      let activeUserId = passedUserId;
-
-      if (!activeUserId) {
-        // Register user account
-        const signUpRes = await signUpAttendee({
-          fullName,
-          email: signUpEmail,
+      // Store pending organization setup in localStorage so it persists until email verification + login
+      const pendingKey = `pending_organizer_${signUpEmail.trim().toLowerCase()}`;
+      localStorage.setItem(
+        pendingKey,
+        JSON.stringify({
+          orgName,
+          orgType,
+          country,
           phoneNumber,
-          password: signUpPassword,
-          role: 'ORGANIZER',
-          redirectTo: '/organizer',
-        });
+          fullName,
+          bankName: includeBankDetails ? bankName : '',
+          accountNumber: includeBankDetails ? accountNumber : '',
+          accountHolderType,
+          holderFullName,
+        })
+      );
 
-        if (!signUpRes.success) {
-          setErrorMsg(signUpRes.error || 'Failed to create user account.');
-          setLoading(false);
-          return;
-        }
+      // Register user account with Supabase Auth
+      const signUpRes = await signUpAttendee({
+        fullName,
+        email: signUpEmail,
+        phoneNumber,
+        password: signUpPassword,
+        role: 'ORGANIZER',
+        redirectTo: '/organizer',
+      });
 
-        if (signUpRes.requiresEmailVerification) {
-          setIsSuccessUnverified(true);
-          setLoading(false);
-          return;
-        }
-
-        // Sign in if needed or grab user
-        const signInRes = await signIn({ email: signUpEmail, password: signUpPassword });
-        if (signInRes.user) {
-          activeUserId = signInRes.user.id;
-        }
+      if (!signUpRes.success) {
+        setErrorMsg(signUpRes.error || 'Failed to create user account.');
+        setLoading(false);
+        return;
       }
 
-      if (activeUserId) {
-        // Create Organization
-        const orgRes = await createOrganization(activeUserId, {
+      setSignInEmail(signUpEmail);
+
+      if (signUpRes.requiresEmailVerification) {
+        setIsSuccessUnverified(true);
+        setLoading(false);
+        return;
+      }
+
+      // If email verification was not required / autoconfirmed
+      const signInRes = await signIn({ email: signUpEmail, password: signUpPassword });
+      if (signInRes.success && signInRes.user) {
+        const orgRes = await createOrganization(signInRes.user.id, {
           name: orgName || 'My Organization',
           type: (orgType === 'Event Agency' ? 'AGENCY' : orgType === 'Registered Business' ? 'BUSINESS' : 'INDIVIDUAL') as any,
           country: country || 'Nigeria',
           phone_number: phoneNumber,
         });
 
-        // Save bank details if provided
-        if (orgRes.success && orgRes.organization && accountNumber) {
+        if (orgRes.success && orgRes.organization && includeBankDetails && accountNumber) {
           await addPayoutAccount(orgRes.organization.id, {
             account_type: accountHolderType === 'Individual' ? 'INDIVIDUAL' : 'BUSINESS',
             account_holder_name: holderFullName || fullName,
@@ -123,10 +132,13 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess }) => {
             account_number: accountNumber,
           });
         }
+        localStorage.removeItem(pendingKey);
+        setLoading(false);
+        if (onSuccess) onSuccess();
+      } else {
+        setMode('signin');
+        setLoading(false);
       }
-
-      setLoading(false);
-      if (onSuccess) onSuccess();
     } catch (err: any) {
       setLoading(false);
       setErrorMsg(err.message || 'An error occurred during account registration.');
@@ -175,11 +187,40 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess }) => {
 
     setLoading(true);
     const result = await signIn({ email: signInEmail, password: signInPassword });
-    setLoading(false);
 
-    if (result.success) {
+    if (result.success && result.user) {
+      // Check for pending organization setup
+      const pendingKey = `pending_organizer_${signInEmail.trim().toLowerCase()}`;
+      const pendingRaw = localStorage.getItem(pendingKey);
+      if (pendingRaw) {
+        try {
+          const pending = JSON.parse(pendingRaw);
+          const orgRes = await createOrganization(result.user.id, {
+            name: pending.orgName || 'My Organization',
+            type: (pending.orgType === 'Event Agency' ? 'AGENCY' : pending.orgType === 'Registered Business' ? 'BUSINESS' : 'INDIVIDUAL') as any,
+            country: pending.country || 'Nigeria',
+            phone_number: pending.phoneNumber || '',
+          });
+
+          if (orgRes.success && orgRes.organization && pending.accountNumber) {
+            await addPayoutAccount(orgRes.organization.id, {
+              account_type: pending.accountHolderType === 'Individual' ? 'INDIVIDUAL' : 'BUSINESS',
+              account_holder_name: pending.holderFullName || pending.fullName,
+              bank_name: pending.bankName || 'Guaranty Trust Bank',
+              bank_code: '058',
+              account_number: pending.accountNumber,
+            });
+          }
+          localStorage.removeItem(pendingKey);
+        } catch (err) {
+          console.error('Failed to apply pending organization setup:', err);
+        }
+      }
+
+      setLoading(false);
       if (onSuccess) onSuccess();
     } else {
+      setLoading(false);
       setErrorMsg(result.error || 'Invalid email or password.');
     }
   };
@@ -496,10 +537,15 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess }) => {
                                 <p className="text-xs text-slate-500 mt-0.5">Set up payout later in the settings.</p>
                                 <button
                                   type="button"
-                                  onClick={() => setStep(4)}
-                                  className="mt-3.5 w-full border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold py-2.5 px-4 rounded-xl text-xs transition-all cursor-pointer"
+                                  disabled={loading}
+                                  onClick={() => handleCompleteRegistration(false)}
+                                  className="mt-3.5 w-full border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold py-2.5 px-4 rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center"
                                 >
-                                  Skip for Now
+                                  {loading ? (
+                                    <div className="w-4 h-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin" />
+                                  ) : (
+                                    <span>Skip for Now</span>
+                                  )}
                                 </button>
                               </div>
                             </div>
@@ -627,51 +673,28 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess }) => {
                           <div className="flex items-center space-x-3 pt-2">
                             <button
                               type="button"
-                              onClick={() => setStep(4)}
-                              className="flex-1 bg-[#00b894] hover:bg-[#00a383] text-white font-bold py-3 px-4 rounded-xl shadow-sm transition-all cursor-pointer text-xs text-center"
+                              disabled={loading}
+                              onClick={() => handleCompleteRegistration(true)}
+                              className="flex-1 bg-[#00b894] hover:bg-[#00a383] text-white font-bold py-3 px-4 rounded-xl shadow-sm transition-all cursor-pointer text-xs text-center flex items-center justify-center"
                             >
-                              Save bank account
+                              {loading ? (
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <span>Save bank account</span>
+                              )}
                             </button>
                             <button
                               type="button"
-                              onClick={() => setStep(4)}
-                              className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl transition-all cursor-pointer text-xs text-center"
+                              disabled={loading}
+                              onClick={() => handleCompleteRegistration(false)}
+                              className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl transition-all cursor-pointer text-xs text-center flex items-center justify-center"
                             >
-                              Skip for now
+                              <span>Skip for now</span>
                             </button>
                           </div>
                         </div>
                       </div>
                     )}
-                  </div>
-                )}
-
-                {step === 4 && (
-                  /* STEP 4: ACCOUNT READY */
-                  <div className="space-y-6">
-                    <div>
-                      <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                        Your organizer account is ready
-                      </h1>
-                      <p className="mt-2 text-xs sm:text-sm text-slate-500">
-                        You can now start organizing events, selling tickets, and managing payouts on your dashboard.
-                      </p>
-                    </div>
-
-                    <div className="pt-4">
-                      <button
-                        type="button"
-                        disabled={loading}
-                        onClick={() => handleCompleteRegistration()}
-                        className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition-all cursor-pointer text-xs sm:text-sm flex items-center justify-center space-x-2"
-                      >
-                        {loading ? (
-                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <span>Go to Dashboard</span>
-                        )}
-                      </button>
-                    </div>
                   </div>
                 )}
               </div>
@@ -794,10 +817,10 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess }) => {
             {mode === 'signup' && step === 1 && <OnboardingIllustrationStep1 />}
             {mode === 'signup' && step === 2 && <OnboardingIllustrationStep2 />}
             {mode === 'signup' && step === 3 && <OnboardingIllustrationStep3 />}
-            {(mode === 'signin' || (mode === 'signup' && step === 4)) && <OnboardingIllustrationStep4 />}
+            {mode === 'signin' && <OnboardingIllustrationStep4 />}
           </div>
 
-          {/* Stepper Dots (1 - 2 - 3 - 4) */}
+          {/* Stepper Dots (1 - 2 - 3) */}
           {mode === 'signup' && (
             <div className="relative z-10 flex items-center space-x-3 pt-4">
               <div
@@ -824,15 +847,6 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess }) => {
                 }`}
               >
                 3
-              </div>
-              <div className={`w-6 h-0.5 ${step >= 4 ? 'bg-[#00b894]' : 'bg-slate-200'}`}></div>
-
-              <div
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                  step >= 4 ? 'bg-[#00b894] text-white' : 'bg-slate-200 text-slate-500'
-                }`}
-              >
-                4
               </div>
             </div>
           )}
