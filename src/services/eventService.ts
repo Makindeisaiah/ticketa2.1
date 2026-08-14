@@ -96,7 +96,7 @@ export async function getAllEvents(filters: EventFilterOptions = {}): Promise<Se
   }
 
   if (eventsList.length === 0) {
-    eventsList = INITIAL_SEED_EVENTS;
+    eventsList = [];
   }
 
   // Apply filters in memory
@@ -161,5 +161,5 @@ export async function getAllEvents(filters: EventFilterOptions = {}): Promise<Se
 export async function getEventById(id: string): Promise<SeedEventData | null> {
   const events = await getAllEvents();
   const found = events.find((e) => e.id === id || e.slug === id);
-  return found || events[0] || null;
+  return found || null;
 }

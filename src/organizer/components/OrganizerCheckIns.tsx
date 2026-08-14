@@ -6,8 +6,21 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 
-export const OrganizerCheckIns: React.FC<{ events?: any[]; userId?: string }> = () => {
+export const OrganizerCheckIns: React.FC<{ events?: any[]; userId?: string }> = ({ events = [] }) => {
   const [selectedEvent, setSelectedEvent] = useState('All Events');
+
+  // Compute real check-in statistics across events
+  const totalTicketsSold = events.reduce((acc, evt) => {
+    if (!evt.ticket_types || !Array.isArray(evt.ticket_types)) return acc;
+    return acc + evt.ticket_types.reduce((sub: number, tt: any) => sub + (Number(tt.quantity_sold) || 0), 0);
+  }, 0);
+
+  const totalCheckedIn = events.reduce((acc, evt) => {
+    return acc + (Number(evt.checked_in_count) || 0);
+  }, 0);
+
+  const stillToCheckIn = Math.max(0, totalTicketsSold - totalCheckedIn);
+  const checkInRate = totalTicketsSold > 0 ? ((totalCheckedIn / totalTicketsSold) * 100).toFixed(1) : '0';
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -29,9 +42,11 @@ export const OrganizerCheckIns: React.FC<{ events?: any[]; userId?: string }> = 
             className="bg-[#111723]/90 border border-slate-800/80 rounded-xl px-4 py-2.5 text-xs font-bold text-white pr-9 appearance-none focus:outline-none focus:border-[#00b894] cursor-pointer"
           >
             <option value="All Events">All Events</option>
-            <option value="Davido Live in Lagos">Davido Live in Lagos</option>
-            <option value="Asake Live in Lagos">Asake Live in Lagos</option>
-            <option value="Burna Boy Live in Lagos">Burna Boy Live in Lagos</option>
+            {events.map((evt) => (
+              <option key={evt.id} value={evt.title}>
+                {evt.title}
+              </option>
+            ))}
           </select>
           <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
         </div>
@@ -41,22 +56,22 @@ export const OrganizerCheckIns: React.FC<{ events?: any[]; userId?: string }> = 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-1">
           <span className="text-xs font-semibold text-slate-400 block">Total Tickets Sold</span>
-          <span className="text-2xl font-black text-white tracking-tight block">20,425</span>
+          <span className="text-2xl font-black text-white tracking-tight block">{totalTicketsSold.toLocaleString()}</span>
         </div>
 
         <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-1">
           <span className="text-xs font-semibold text-slate-400 block">Checked-In</span>
-          <span className="text-2xl font-black text-white tracking-tight block">16,692</span>
+          <span className="text-2xl font-black text-white tracking-tight block">{totalCheckedIn.toLocaleString()}</span>
         </div>
 
         <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-1">
           <span className="text-xs font-semibold text-slate-400 block">Still to Check-In</span>
-          <span className="text-2xl font-black text-white tracking-tight block">3,308</span>
+          <span className="text-2xl font-black text-white tracking-tight block">{stillToCheckIn.toLocaleString()}</span>
         </div>
 
         <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-1">
           <span className="text-xs font-semibold text-slate-400 block">Check-In Rate</span>
-          <span className="text-2xl font-black text-white tracking-tight block">83.5%</span>
+          <span className="text-2xl font-black text-white tracking-tight block">{checkInRate}%</span>
         </div>
       </div>
 

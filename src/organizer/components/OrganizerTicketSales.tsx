@@ -8,6 +8,37 @@ export const OrganizerTicketSales: React.FC<{ orders?: any[] }> = ({ orders = []
   const [selectedEvent, setSelectedEvent] = useState('All Events');
   const [timeRange, setTimeRange] = useState<'Daily' | 'Weekly' | 'Monthly'>('Daily');
 
+  // Compute real metrics
+  const paidOrders = (orders || []).filter((o) => o.status === 'PAID' || o.status === 'COMPLETED');
+  const totalRev = paidOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+  const platformFee = Math.round(totalRev * 0.05);
+  const netRev = totalRev - platformFee;
+
+  const totalTickets = (orders || []).reduce((sum, o) => {
+    if (o.order_items && Array.isArray(o.order_items)) {
+      return sum + o.order_items.reduce((s: number, it: any) => s + (Number(it.quantity) || 1), 0);
+    }
+    return sum + 1;
+  }, 0);
+
+  // Group ticket types performance if available from orders
+  const ticketTypeMap = new Map<string, { type: string; price: number; sold: number; revenue: number }>();
+  (orders || []).forEach((o) => {
+    if (o.order_items && Array.isArray(o.order_items)) {
+      o.order_items.forEach((it: any) => {
+        const typeName = it.ticket_types?.name || it.name || 'Standard';
+        const price = Number(it.unit_price) || Number(it.price) || 0;
+        const qty = Number(it.quantity) || 1;
+        const rev = price * qty;
+        const existing = ticketTypeMap.get(typeName) || { type: typeName, price, sold: 0, revenue: 0 };
+        existing.sold += qty;
+        existing.revenue += rev;
+        ticketTypeMap.set(typeName, existing);
+      });
+    }
+  });
+  const ticketTypeRows = Array.from(ticketTypeMap.values());
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header Bar */}
@@ -28,9 +59,6 @@ export const OrganizerTicketSales: React.FC<{ orders?: any[] }> = ({ orders = []
             className="bg-[#111723]/90 border border-slate-800/80 rounded-xl px-4 py-2.5 text-xs font-bold text-white pr-9 appearance-none focus:outline-none focus:border-[#00b894] cursor-pointer"
           >
             <option value="All Events">All Events</option>
-            <option value="Davido Live in Lagos">Davido Live in Lagos</option>
-            <option value="Asake Live in Lagos">Asake Live in Lagos</option>
-            <option value="Burna Boy Live in Lagos">Burna Boy Live in Lagos</option>
           </select>
           <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
         </div>
@@ -40,22 +68,22 @@ export const OrganizerTicketSales: React.FC<{ orders?: any[] }> = ({ orders = []
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-1">
           <span className="text-xs font-semibold text-slate-400 block">Total Tickets Sold</span>
-          <span className="text-2xl font-black text-white tracking-tight block">20,425 / 75,000</span>
+          <span className="text-2xl font-black text-white tracking-tight block">{totalTickets.toLocaleString()}</span>
         </div>
 
         <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-1">
           <span className="text-xs font-semibold text-slate-400 block">Total Revenue</span>
-          <span className="text-2xl font-black text-white tracking-tight block">#1,524,547,900</span>
+          <span className="text-2xl font-black text-white tracking-tight block">₦{totalRev.toLocaleString()}</span>
         </div>
 
         <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-1">
-          <span className="text-xs font-semibold text-slate-400 block">Platform Fees</span>
-          <span className="text-2xl font-black text-white tracking-tight block">#100,377,000</span>
+          <span className="text-xs font-semibold text-slate-400 block">Platform Fees (5%)</span>
+          <span className="text-2xl font-black text-white tracking-tight block">₦{platformFee.toLocaleString()}</span>
         </div>
 
         <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-1">
           <span className="text-xs font-semibold text-slate-400 block">Net Revenue</span>
-          <span className="text-2xl font-black text-white tracking-tight block">#1,489,200,000</span>
+          <span className="text-2xl font-black text-white tracking-tight block">₦{netRev.toLocaleString()}</span>
         </div>
       </div>
 
@@ -124,25 +152,26 @@ export const OrganizerTicketSales: React.FC<{ orders?: any[] }> = ({ orders = []
                 <th className="pb-3">Ticket Type</th>
                 <th className="pb-3">Price</th>
                 <th className="pb-3">Tickets Sold</th>
-                <th className="pb-3">Tickets Left</th>
                 <th className="pb-3 text-right">Revenue</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-slate-300 font-medium">
-              {[
-                { type: 'Regular', price: '#10,000', sold: '23,530', left: '1,750', revenue: '#450,000,000' },
-                { type: 'VIP', price: '#30,000', sold: '12,095', left: '405', revenue: '#350,000,000' },
-                { type: 'VVIP', price: '#100,000', sold: '2,100', left: '0', revenue: '#350,000,000' },
-                { type: 'Premium', price: '#3,500,000', sold: '250', left: '0', revenue: '#369,000,000' },
-              ].map((row) => (
-                <tr key={row.type}>
-                  <td className="py-3 font-bold text-white">{row.type}</td>
-                  <td className="py-3 text-slate-400">{row.price}</td>
-                  <td className="py-3 text-white font-bold">{row.sold}</td>
-                  <td className="py-3 text-slate-400">{row.left}</td>
-                  <td className="py-3 text-right text-[#00b894] font-black">{row.revenue}</td>
+              {ticketTypeRows.length > 0 ? (
+                ticketTypeRows.map((row) => (
+                  <tr key={row.type}>
+                    <td className="py-3 font-bold text-white">{row.type}</td>
+                    <td className="py-3 text-slate-400">₦{row.price.toLocaleString()}</td>
+                    <td className="py-3 text-white font-bold">{row.sold.toLocaleString()}</td>
+                    <td className="py-3 text-right text-[#00b894] font-black">₦{row.revenue.toLocaleString()}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-slate-500">
+                    No ticket type sales recorded yet
+                  </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
@@ -156,31 +185,42 @@ export const OrganizerTicketSales: React.FC<{ orders?: any[] }> = ({ orders = []
             <thead>
               <tr className="text-slate-400 border-b border-slate-800/80 font-bold">
                 <th className="pb-3">Buyer Name</th>
-                <th className="pb-3">Ticket Type</th>
-                <th className="pb-3">Qty</th>
+                <th className="pb-3">Event</th>
+                <th className="pb-3">Amount</th>
                 <th className="pb-3">Payment</th>
                 <th className="pb-3 text-right">Date</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-slate-300 font-medium">
-              {[
-                { name: 'Jerry Oladipo', type: 'VIP', qty: 1, status: 'Paid', date: 'Dec 1, 2025' },
-                { name: 'Sam Joe', type: 'Regular', qty: 2, status: 'Paid', date: 'Dec 2, 2025' },
-                { name: 'Janet Ebun', type: 'VVIP', qty: 1, status: 'Paid', date: 'Dec 3, 2025' },
-                { name: 'Alex Kate', type: 'Premium', qty: 1, status: 'Paid', date: 'Dec 4, 2025' },
-              ].map((b, idx) => (
-                <tr key={idx}>
-                  <td className="py-3 font-bold text-white">{b.name}</td>
-                  <td className="py-3 text-slate-400">{b.type}</td>
-                  <td className="py-3 text-white">{b.qty}</td>
-                  <td className="py-3">
-                    <span className="px-2 py-0.5 bg-emerald-500/15 text-emerald-400 rounded-full text-[10px] font-bold">
-                      {b.status}
-                    </span>
+              {orders && orders.length > 0 ? (
+                orders.map((b, idx) => (
+                  <tr key={b.id || idx}>
+                    <td className="py-3 font-bold text-white">{b.customer_name || 'Attendee'}</td>
+                    <td className="py-3 text-slate-400 truncate max-w-[120px]">{b.event_title || 'Event'}</td>
+                    <td className="py-3 text-white font-bold">₦{(Number(b.total_amount) || 0).toLocaleString()}</td>
+                    <td className="py-3">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          b.status === 'PAID'
+                            ? 'bg-emerald-500/15 text-emerald-400'
+                            : 'bg-amber-500/15 text-amber-400'
+                        }`}
+                      >
+                        {b.status || 'Pending'}
+                      </span>
+                    </td>
+                    <td className="py-3 text-right text-slate-400 text-[11px]">
+                      {b.created_at ? new Date(b.created_at).toLocaleDateString() : 'Recent'}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-slate-500">
+                    No orders placed yet
                   </td>
-                  <td className="py-3 text-right text-slate-400 text-[11px]">{b.date}</td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>

@@ -1,23 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   LayoutDashboard,
   Calendar,
   Ticket,
   QrCode,
-  Users,
-  CreditCard,
-  FileText,
   Settings,
   Plus,
-  Building2,
   ChevronDown,
   ArrowLeft,
   LogOut,
-  ShieldCheck,
   CheckCircle2,
   Search,
   Bell,
   TrendingUp,
+  X,
 } from 'lucide-react';
 import { Organization } from '../../types/database';
 import { useAuth } from '../../context/AuthContext';
@@ -37,9 +33,12 @@ interface OrganizerLayoutProps {
   onOpenCreateOrg: () => void;
   activeTab: OrganizerTab;
   onTabChange: (tab: OrganizerTab) => void;
-  onSwitchToAttendee: () => void;
+  onSwitchToAttendee?: () => void;
   subpageTitle?: string | null;
   onBackToSettingsHub?: () => void;
+  events?: any[];
+  orders?: any[];
+  attendees?: any[];
   children: React.ReactNode;
 }
 
@@ -50,14 +49,17 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
   onOpenCreateOrg,
   activeTab,
   onTabChange,
-  onSwitchToAttendee,
   subpageTitle,
   onBackToSettingsHub,
+  events = [],
+  orders = [],
   children,
 }) => {
   const { user, signOut } = useAuth();
   const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
 
   const navItems = [
     { id: 'overview' as OrganizerTab, label: 'Dashboard', icon: LayoutDashboard },
@@ -68,10 +70,44 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
     { id: 'settings' as OrganizerTab, label: 'Settings', icon: Settings },
   ];
 
+  // Close search results when clicked outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setIsSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Filtered search results based on active organization data
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+  const matchingEvents = trimmedQuery
+    ? events.filter(
+        (e) =>
+          e.title?.toLowerCase().includes(trimmedQuery) ||
+          e.venues?.name?.toLowerCase().includes(trimmedQuery) ||
+          e.venue?.toLowerCase().includes(trimmedQuery)
+      )
+    : [];
+
+  const matchingOrders = trimmedQuery
+    ? orders.filter(
+        (o) =>
+          o.customer_name?.toLowerCase().includes(trimmedQuery) ||
+          o.customer_email?.toLowerCase().includes(trimmedQuery) ||
+          o.event_title?.toLowerCase().includes(trimmedQuery) ||
+          o.id?.toLowerCase().includes(trimmedQuery)
+      )
+    : [];
+
+  const hasSearchResults = trimmedQuery.length > 0;
+
   return (
-    <div className="min-h-screen bg-[#0b0f17] text-slate-100 flex flex-col md:flex-row antialiased font-sans">
-      {/* Sidebar Navigation */}
-      <aside className="w-full md:w-64 bg-[#090d14] border-r border-slate-800/80 flex flex-col justify-between flex-shrink-0 z-20">
+    <div className="min-h-screen bg-[#0b0f17] text-slate-100 antialiased font-sans flex">
+      {/* Fixed Sticky Sidebar Navigation (Desktop) */}
+      <aside className="hidden md:flex w-64 fixed inset-y-0 left-0 bg-[#090d14] border-r border-slate-800/80 flex-col justify-between z-40 overflow-y-auto">
         <div>
           {/* Brand Header */}
           <div className="p-5 border-b border-slate-800/80 flex items-center justify-between">
@@ -175,25 +211,21 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
           </nav>
         </div>
 
-        {/* Sidebar Footer */}
+        {/* Sidebar Footer (User Info & Sign Out) */}
         <div className="p-4 border-t border-slate-800/80 space-y-2">
-          <button
-            onClick={onSwitchToAttendee}
-            className="w-full flex items-center justify-center space-x-2 bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white text-xs font-bold py-2.5 px-3 rounded-xl transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="w-4 h-4 text-[#00b894]" />
-            <span>Attendee Storefront</span>
-          </button>
-
           {user && (
-            <div className="pt-2 flex items-center justify-between text-xs text-slate-400 px-1">
+            <div className="flex items-center justify-between text-xs text-slate-400 px-1 py-1">
               <div className="truncate pr-2">
-                <span className="block font-bold text-white text-xs truncate">{user.fullName || activeOrg?.name || 'Flytimefest'}</span>
-                <span className="block text-[10px] text-[#00b894] uppercase font-bold">ORGANIZER ADMIN</span>
+                <span className="block font-bold text-white text-xs truncate">
+                  {user.fullName || activeOrg?.name || 'Flytimefest'}
+                </span>
+                <span className="block text-[10px] text-[#00b894] uppercase font-bold tracking-wider">
+                  ORGANIZER ADMIN
+                </span>
               </div>
               <button
                 onClick={signOut}
-                className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
                 title="Sign Out"
               >
                 <LogOut className="w-4 h-4" />
@@ -203,12 +235,12 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 bg-[#0b0f17] overflow-y-auto flex flex-col min-w-0">
-        {/* Top Header Bar with Search & Notifications & Profile */}
-        <header className="sticky top-0 z-30 bg-[#090d14]/90 backdrop-blur-md border-b border-slate-800/80 px-6 py-3.5 flex items-center justify-between gap-4">
-          {/* Breadcrumb or Search Bar */}
-          <div className="flex items-center space-x-3 flex-1 max-w-md">
+      {/* Main Content Container */}
+      <main className="flex-1 md:pl-64 flex flex-col min-h-screen bg-[#0b0f17] min-w-0">
+        {/* Sticky Top Header Bar */}
+        <header className="sticky top-0 z-30 bg-[#090d14]/95 backdrop-blur-md border-b border-slate-800/80 px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4">
+          {/* Breadcrumb or Functional Search Bar */}
+          <div className="flex items-center space-x-3 flex-1 max-w-md" ref={searchRef}>
             {subpageTitle && onBackToSettingsHub ? (
               <button
                 onClick={onBackToSettingsHub}
@@ -225,21 +257,90 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
                 <input
                   type="text"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Q Search events, orders, settings..."
-                  className="w-full bg-slate-900/90 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#00b894] transition-colors"
+                  onFocus={() => setIsSearchOpen(true)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setIsSearchOpen(true);
+                  }}
+                  placeholder="Q Search events, orders, attendees..."
+                  className="w-full bg-slate-900/90 border border-slate-800 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#00b894] transition-colors"
                 />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-slate-300 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                {/* Live Search Results Dropdown */}
+                {isSearchOpen && hasSearchResults && (
+                  <div className="absolute left-0 right-0 top-11 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl z-50 p-2 max-h-72 overflow-y-auto space-y-2">
+                    {/* Events Results */}
+                    {matchingEvents.length > 0 && (
+                      <div>
+                        <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider px-2 py-1">
+                          Events ({matchingEvents.length})
+                        </div>
+                        {matchingEvents.map((evt) => (
+                          <button
+                            key={evt.id}
+                            onClick={() => {
+                              onTabChange('events');
+                              setIsSearchOpen(false);
+                              setSearchQuery('');
+                            }}
+                            className="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 rounded-lg text-xs flex items-center justify-between text-slate-200 transition-colors cursor-pointer"
+                          >
+                            <span className="font-bold truncate">{evt.title}</span>
+                            <span className="text-[10px] text-slate-500 capitalize">{evt.status || 'Event'}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Orders Results */}
+                    {matchingOrders.length > 0 && (
+                      <div className="border-t border-slate-800 pt-1">
+                        <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider px-2 py-1">
+                          Orders &amp; Attendees ({matchingOrders.length})
+                        </div>
+                        {matchingOrders.map((ord) => (
+                          <button
+                            key={ord.id}
+                            onClick={() => {
+                              onTabChange('orders');
+                              setIsSearchOpen(false);
+                              setSearchQuery('');
+                            }}
+                            className="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 rounded-lg text-xs flex items-center justify-between text-slate-200 transition-colors cursor-pointer"
+                          >
+                            <span className="font-bold truncate">{ord.customer_name || 'Buyer'}</span>
+                            <span className="text-[10px] text-[#00b894] font-bold">₦{(Number(ord.total_amount) || 0).toLocaleString()}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {matchingEvents.length === 0 && matchingOrders.length === 0 && (
+                      <div className="p-4 text-center text-xs text-slate-400">
+                        No matches found for "{searchQuery}" in this organization.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           {/* Header Right Actions */}
-          <div className="flex items-center space-x-4 flex-shrink-0">
-            {/* Notification Bell with Badge */}
+          <div className="flex items-center space-x-3 sm:space-x-4 flex-shrink-0">
+            {/* Notification Bell */}
             <button className="relative p-2 bg-slate-900/90 border border-slate-800 rounded-xl text-slate-300 hover:text-white transition-colors cursor-pointer">
               <Bell className="w-4 h-4" />
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-400 text-slate-950 text-[10px] font-black rounded-full flex items-center justify-center">
-                5
+                3
               </span>
             </button>
 
@@ -255,8 +356,28 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
           </div>
         </header>
 
+        {/* Mobile Navigation bar */}
+        <div className="md:hidden flex overflow-x-auto bg-[#090d14] border-b border-slate-800 p-2 space-x-1">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => onTabChange(item.id)}
+                className={`flex-shrink-0 flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  isActive ? 'bg-[#00b894] text-white' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Page Content */}
-        <div className="p-6 flex-1">{children}</div>
+        <div className="p-4 sm:p-6 lg:p-8 flex-1">{children}</div>
       </main>
     </div>
   );

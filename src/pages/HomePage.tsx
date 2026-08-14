@@ -176,11 +176,21 @@ export const HomePage: React.FC<HomePageProps> = ({ events, onSelectEvent, onNav
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-          {trendingEvents.map((evt) => (
-            <EventCard key={evt.id} event={evt} onClick={onSelectEvent} />
-          ))}
-        </div>
+        {trendingEvents.length > 0 ? (
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            {trendingEvents.map((evt) => (
+              <EventCard key={evt.id} event={evt} onClick={onSelectEvent} />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-14 px-4 bg-slate-50 border border-slate-200/80 rounded-2xl">
+            <Calendar className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+            <h3 className="text-sm font-bold text-slate-700 mb-1">No upcoming events yet</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              There are currently no active public events. Stay tuned or check back later!
+            </p>
+          </div>
+        )}
       </section>
 
       {/* Trust Badges matching Figma */}

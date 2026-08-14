@@ -31,35 +31,12 @@ export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
 }) => {
   const [timeRange, setTimeRange] = useState<'Daily' | 'Weekly' | 'Monthly'>('Daily');
 
-  // Display revenue formatting matching Figma screenshots
-  const displayRevenue = metrics.totalRevenue > 0
-    ? `#${metrics.totalRevenue.toLocaleString()}`
-    : '#8,524,547,900';
-
-  const displaySold = metrics.ticketsSold > 0
-    ? `${metrics.ticketsSold.toLocaleString()} / 75,000`
-    : '45,425 / 75,000';
-
-  const displayEvents = metrics.activeEvents > 0 ? metrics.activeEvents : 3;
-
-  const displayCheckIns = metrics.totalCheckedIn > 0
-    ? `${metrics.totalCheckedIn.toLocaleString()} / 75,000`
-    : '22,345 / 75,000';
-
-  const upcomingEventsList = events.length > 0 ? events : [
-    {
-      id: 'evt_1',
-      title: 'Davido Live In Lagos',
-      date: 'Dec 24, 2025',
-      venue: 'Eko Convention Center, Lagos',
-    },
-    {
-      id: 'evt_2',
-      title: 'Burna Boy Live In Lagos',
-      date: 'Dec 27, 2025',
-      venue: 'Balmoral Convention Center, VI',
-    },
-  ];
+  // Display real revenue & stats formatted cleanly
+  const displayRevenue = `₦${(metrics.totalRevenue || 0).toLocaleString()}`;
+  const displaySold = `${(metrics.ticketsSold || 0).toLocaleString()}`;
+  const displayEvents = metrics.activeEvents || 0;
+  const displayCheckIns = `${(metrics.totalCheckedIn || 0).toLocaleString()}`;
+  const upcomingEventsList = events || [];
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -256,36 +233,50 @@ export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
           </button>
         </div>
 
-        <div className="space-y-3">
-          {upcomingEventsList.map((evt) => (
-            <div
-              key={evt.id}
-              className="bg-slate-900/80 border border-slate-800/80 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-slate-700 transition-colors"
-            >
-              <div className="space-y-1">
-                <h4 className="font-extrabold text-white text-sm">{evt.title}</h4>
-                <p className="text-xs text-slate-400 font-medium">
-                  {evt.date || (evt.start_time ? new Date(evt.start_time).toLocaleDateString() : 'Dec 24, 2025')} - {evt.venue || evt.venues?.name || 'Eko Convention Center, Lagos'}
-                </p>
-              </div>
+        {upcomingEventsList.length > 0 ? (
+          <div className="space-y-3">
+            {upcomingEventsList.map((evt) => (
+              <div
+                key={evt.id}
+                className="bg-slate-900/80 border border-slate-800/80 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-slate-700 transition-colors"
+              >
+                <div className="space-y-1">
+                  <h4 className="font-extrabold text-white text-sm">{evt.title}</h4>
+                  <p className="text-xs text-slate-400 font-medium">
+                    {evt.date || (evt.start_time ? new Date(evt.start_time).toLocaleDateString() : 'N/A')} - {evt.venue || evt.venues?.name || 'Main Venue'}
+                  </p>
+                </div>
 
-              <div className="flex items-center space-x-2.5 self-end sm:self-auto">
-                <button
-                  onClick={() => onNavigateTab('events')}
-                  className="px-4 py-2 border border-[#00b894] text-[#00b894] hover:bg-[#00b894]/10 rounded-xl text-xs font-extrabold transition-colors cursor-pointer"
-                >
-                  Manage event
-                </button>
-                <button
-                  onClick={() => onNavigateTab('orders')}
-                  className="px-4 py-2 bg-[#00b894] hover:bg-[#00a383] text-white rounded-xl text-xs font-extrabold shadow-md shadow-[#00b894]/20 transition-colors cursor-pointer"
-                >
-                  View sales
-                </button>
+                <div className="flex items-center space-x-2.5 self-end sm:self-auto">
+                  <button
+                    onClick={() => onNavigateTab('events')}
+                    className="px-4 py-2 border border-[#00b894] text-[#00b894] hover:bg-[#00b894]/10 rounded-xl text-xs font-extrabold transition-colors cursor-pointer"
+                  >
+                    Manage event
+                  </button>
+                  <button
+                    onClick={() => onNavigateTab('orders')}
+                    className="px-4 py-2 bg-[#00b894] hover:bg-[#00a383] text-white rounded-xl text-xs font-extrabold shadow-md shadow-[#00b894]/20 transition-colors cursor-pointer"
+                  >
+                    View sales
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-10 bg-slate-900/40 border border-slate-800/80 rounded-xl space-y-3">
+            <Calendar className="w-8 h-8 text-slate-500 mx-auto" />
+            <p className="text-sm font-bold text-slate-300">No upcoming events yet</p>
+            <p className="text-xs text-slate-500 max-w-xs mx-auto">Create an event to start publishing and tracking ticket sales.</p>
+            <button
+              onClick={onOpenCreateModal}
+              className="px-4 py-2 bg-[#00b894] hover:bg-[#00a383] text-white rounded-xl text-xs font-black shadow-md shadow-[#00b894]/20 transition-colors cursor-pointer inline-flex items-center space-x-1.5"
+            >
+              <span>Create New Event</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

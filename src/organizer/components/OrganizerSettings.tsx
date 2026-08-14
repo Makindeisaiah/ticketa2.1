@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Building2,
   Users,
@@ -42,23 +42,42 @@ export type SettingsSubSection =
 interface OrganizerSettingsProps {
   activeOrg: Organization;
   onRefreshOrg: () => void;
-  onSubSectionChange?: (title: string | null) => void;
+  subSection?: SettingsSubSection;
+  onSubSectionChange?: (sub: SettingsSubSection, title: string | null) => void;
 }
 
 export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
   activeOrg,
   onRefreshOrg,
+  subSection = null,
   onSubSectionChange,
 }) => {
-  const [activeSub, setActiveSub] = useState<SettingsSubSection>(null);
+  const [activeSub, setActiveSub] = useState<SettingsSubSection>(subSection);
   const [payoutTab, setPayoutTab] = useState<'overview' | 'payouts' | 'refunds'>('overview');
+
+  useEffect(() => {
+    setActiveSub(subSection);
+  }, [subSection]);
 
   const setSubSection = (sub: SettingsSubSection, title: string | null) => {
     setActiveSub(sub);
     if (onSubSectionChange) {
-      onSubSectionChange(title);
+      onSubSectionChange(sub, title);
     }
   };
+
+  const renderBackHeader = (title: string) => (
+    <div className="flex items-center justify-between pb-4 border-b border-slate-800/80 mb-6">
+      <button
+        onClick={() => setSubSection(null, null)}
+        className="inline-flex items-center space-x-2 text-xs font-bold text-slate-300 hover:text-white bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 px-4 py-2.5 rounded-xl transition-colors cursor-pointer shadow-sm"
+      >
+        <ArrowLeft className="w-4 h-4 text-[#00b894]" />
+        <span>Back to Settings</span>
+      </button>
+      <span className="text-xs font-bold text-slate-400">Settings / {title}</span>
+    </div>
+  );
 
   // Main Settings Hub (9 Cards Grid)
   if (!activeSub) {
@@ -100,30 +119,30 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
       },
       {
         id: 'notifications' as SettingsSubSection,
-        title: 'Notification',
-        desc: 'Control how and when you receive platform alerts.',
+        title: 'Notifications',
+        desc: 'Choose how and when you want to receive updates.',
         btnText: 'Manage Notifications',
         icon: Bell,
       },
       {
         id: 'defaults' as SettingsSubSection,
         title: 'Default Event Settings',
-        desc: 'Set default rules applied to newly created events.',
+        desc: 'Set pre-configured options for faster event creation.',
         btnText: 'Edit Defaults',
         icon: Sliders,
       },
       {
         id: 'integrations' as SettingsSubSection,
-        title: 'Integrations',
-        desc: 'Connect external tools to extend your event workflow.',
+        title: 'Integrations & API',
+        desc: 'Connect your favorite tools and access the Ticketa API.',
         btnText: 'View Integrations',
         icon: Share2,
       },
       {
         id: 'legal' as SettingsSubSection,
         title: 'Legal & Compliance',
-        desc: 'Manage legal requirements and compliance settings.',
-        btnText: 'Manage Legal',
+        desc: 'Review terms, policies, and data processing agreements.',
+        btnText: 'Review Legal',
         icon: Lock,
       },
     ];
@@ -134,7 +153,7 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
         <div>
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Settings</h1>
           <p className="text-xs sm:text-sm text-slate-400 font-medium">
-            Monitor event entry and manage guest check-ins
+            Manage your organization settings and preferences
           </p>
         </div>
 
@@ -171,10 +190,11 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
     );
   }
 
-  // SUBPAGE 1: Organization Profile (IMG_2944.jpeg)
+  // SUBPAGE 1: Organization Profile
   if (activeSub === 'org_profile') {
     return (
       <div className="space-y-6 max-w-7xl mx-auto">
+        {renderBackHeader('Organization Profile')}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column (Span 2) */}
           <div className="lg:col-span-2 space-y-6">
@@ -186,7 +206,7 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
 
               <div className="flex items-center space-x-4">
                 <div className="w-16 h-16 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-xl font-black text-[#00b894]">
-                  F
+                  {activeOrg.name ? activeOrg.name.charAt(0).toUpperCase() : 'F'}
                 </div>
                 <div>
                   <button className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl border border-slate-700 transition-colors cursor-pointer">
@@ -219,10 +239,9 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
                   <label className="block text-slate-300 font-bold mb-1">Description</label>
                   <textarea
                     rows={4}
-                    defaultValue="Davido returns to Lagos with a powerful live performance..."
+                    defaultValue="Flytimefest Official Organizer Profile on Ticketa"
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-[#00b894] resize-none"
                   />
-                  <span className="text-[10px] text-slate-500 block text-right mt-1">45 / 1500</span>
                 </div>
               </div>
             </div>
@@ -249,7 +268,7 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
                   <label className="block text-slate-300 font-bold mb-1">Business Address</label>
                   <input
                     type="text"
-                    defaultValue="146 Freedom Way, Victoria Island"
+                    defaultValue="Victoria Island, Lagos"
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none"
                   />
                 </div>
@@ -259,48 +278,35 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
 
           {/* Right Column (Span 1) */}
           <div className="space-y-6">
-            {/* Contact Details Card */}
-            <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-4 text-xs">
-              <h3 className="text-base font-extrabold text-white border-b border-slate-800 pb-3">Contact Details</h3>
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Support Email</label>
-                <input
-                  type="email"
-                  defaultValue="info@flytimefest.com"
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-white focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Phone Number</label>
-                <input
-                  type="text"
-                  defaultValue="+2349048372638"
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-white focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Website</label>
-                <input
-                  type="text"
-                  defaultValue="flytimefest.com"
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-white focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Instagram</label>
-                <input
-                  type="text"
-                  defaultValue="flytimefest"
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-white focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Facebook</label>
-                <input
-                  type="text"
-                  defaultValue="flytimefest"
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-white focus:outline-none"
-                />
+            <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-4">
+              <h3 className="text-base font-extrabold text-white border-b border-slate-800 pb-3">
+                Contact &amp; Social Links
+              </h3>
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Contact Email</label>
+                  <input
+                    type="email"
+                    defaultValue="info@flytimefest.com"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Phone Number</label>
+                  <input
+                    type="text"
+                    defaultValue="+2349048372638"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Website</label>
+                  <input
+                    type="text"
+                    defaultValue="flytimefest.com"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-white focus:outline-none"
+                  />
+                </div>
               </div>
             </div>
 
@@ -327,10 +333,11 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
     );
   }
 
-  // SUBPAGE 2: Team & Permissions (IMG_2945.jpeg)
+  // SUBPAGE 2: Team & Permissions
   if (activeSub === 'team') {
     return (
       <div className="space-y-6 max-w-7xl mx-auto">
+        {renderBackHeader('Team & Permissions')}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="relative max-w-md flex-1">
             <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
@@ -356,7 +363,6 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
                 { name: 'Tolani Abiodun', email: 'tolani@flytimefest.com', role: 'Organizer', roleColor: 'bg-emerald-500/20 text-emerald-400', status: 'Active' },
                 { name: 'Kola Ojo', email: 'finance@flytimefest.com', role: 'Finance', roleColor: 'bg-purple-500/20 text-purple-400', status: 'Active' },
                 { name: 'Funke Akindele', email: 'staff@flytimefest.com', role: 'Gate Staff', roleColor: 'bg-pink-500/20 text-pink-400', status: 'Active' },
-                { name: 'David Beckham', email: 'support@flytimefest.com', role: 'Support', roleColor: 'bg-amber-500/20 text-amber-400', status: 'Pending' },
               ].map((m, idx) => (
                 <div key={idx} className="bg-slate-900/80 border border-slate-800 p-4 rounded-xl flex items-center justify-between gap-4">
                   <div className="flex items-center space-x-3">
@@ -368,20 +374,10 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
                       <span className="block text-[11px] text-slate-400">{m.email}</span>
                     </div>
                   </div>
-
                   <div className="flex items-center space-x-3">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-black ${m.roleColor}`}>
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${m.roleColor}`}>
                       {m.role}
                     </span>
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-black ${m.status === 'Active' ? 'bg-[#00b894]/20 text-[#00b894]' : 'bg-amber-500/20 text-amber-400'}`}>
-                      {m.status}
-                    </span>
-                    <button className="p-1.5 text-slate-400 hover:text-white rounded-lg">
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                    <button className="p-1.5 text-slate-400 hover:text-white rounded-lg">
-                      <MoreVertical className="w-3.5 h-3.5" />
-                    </button>
                   </div>
                 </div>
               ))}
@@ -397,7 +393,6 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
                 { label: 'Organizer', desc: 'Create & manage events, Manage tickets & pricing, View sales analytics' },
                 { label: 'Finance / Accountant', desc: 'View revenue & payouts, Process refunds, Access financial reports' },
                 { label: 'Check-in Staff', desc: 'Scan tickets, Manual check-ins, View attendee list (read-only)' },
-                { label: 'Marketing / Promotions', desc: 'Manage promo codes, View campaign analytics (read-only), Access event links & sharing tools' },
               ].map((p, idx) => (
                 <div key={idx} className="bg-slate-900/80 p-3 rounded-xl space-y-1">
                   <span className="font-extrabold text-white block">{p.label}</span>
@@ -411,27 +406,28 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
     );
   }
 
-  // SUBPAGE 3: Account & Security (IMG_2946.jpeg)
+  // SUBPAGE 3: Account & Security
   if (activeSub === 'security') {
     return (
       <div className="space-y-6 max-w-4xl mx-auto">
+        {renderBackHeader('Account & Security')}
         <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-4">
           <h3 className="text-base font-extrabold text-white border-b border-slate-800 pb-3">Account Info</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <div>
               <label className="block text-slate-300 font-bold mb-1">Full Name</label>
-              <input type="text" defaultValue="Makinde Isaiah" className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-white focus:outline-none" />
+              <input type="text" defaultValue="Organizer Admin" className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-white focus:outline-none" />
             </div>
             <div>
               <label className="block text-slate-300 font-bold mb-1">Email Address</label>
-              <input type="email" defaultValue="info@makindeisaiah.com" className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-white focus:outline-none" />
+              <input type="email" defaultValue="admin@flytimefest.com" className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-white focus:outline-none" />
             </div>
           </div>
         </div>
 
         <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-3">
           <h3 className="text-base font-extrabold text-white">Password</h3>
-          <p className="text-xs text-slate-400">Last changed 3 month ago. Tip: Use a strong, unique password.</p>
+          <p className="text-xs text-slate-400">Use a strong, unique password to secure your organizer account.</p>
           <button className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl border border-slate-700 transition-colors cursor-pointer">
             Change Password
           </button>
@@ -452,10 +448,11 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
     );
   }
 
-  // SUBPAGE 4: Payments & Payouts (IMG_2947.jpeg, IMG_2948.jpeg, IMG_2949.jpeg)
+  // SUBPAGE 4: Payments & Payouts
   if (activeSub === 'payments') {
     return (
       <div className="space-y-6 max-w-7xl mx-auto">
+        {renderBackHeader('Payments & Payouts')}
         {/* Sub-tabs */}
         <div className="flex items-center space-x-4 border-b border-slate-800 pb-2">
           {(['overview', 'payouts', 'refunds'] as const).map((tab) => (
@@ -481,51 +478,32 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
           </button>
         </div>
 
-        {/* 4 Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-1">
-            <span className="text-xs font-semibold text-slate-400 block">Available Balance</span>
-            <span className="text-2xl font-black text-white block">#1,789,896,000</span>
-          </div>
-          <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-1">
-            <span className="text-xs font-semibold text-slate-400 block">Pending Balance</span>
-            <span className="text-2xl font-black text-white block">#389,896,000</span>
-          </div>
-          <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-1">
-            <span className="text-xs font-semibold text-slate-400 block">Total Earning</span>
-            <span className="text-2xl font-black text-white block">#3,368,896,000</span>
-          </div>
-          <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-1">
-            <span className="text-xs font-semibold text-slate-400 block">Next Payout Date</span>
-            <span className="text-xl font-black text-white block">January 18, 2025</span>
-          </div>
-        </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-4">
             <h3 className="text-base font-extrabold text-white border-b border-slate-800 pb-3">Payout Destination</h3>
             <div className="bg-slate-900 p-4 rounded-xl space-y-2 text-xs">
-              <span className="font-extrabold text-white block text-sm">GTBank **** 5399</span>
-              <span className="text-slate-400 block">Account Holder: Flytimefest Ltd.</span>
+              <span className="font-extrabold text-white block text-sm">Nigerian Bank Account</span>
+              <span className="text-slate-400 block">Organization Account: {activeOrg?.name || 'Flytimefest'}</span>
             </div>
           </div>
 
           <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-4">
             <h3 className="text-base font-extrabold text-white border-b border-slate-800 pb-3">Payment History</h3>
-            <div className="text-xs text-slate-400 py-4 text-center">Recent payout logs connected via QuickPay</div>
+            <div className="text-xs text-slate-400 py-4 text-center">Payout settlements processed automatically</div>
           </div>
         </div>
       </div>
     );
   }
 
-  // SUBPAGE 5: Billing & Subscription (IMG_2950.jpeg)
+  // SUBPAGE 5: Billing & Subscription
   if (activeSub === 'billing') {
     return (
       <div className="space-y-6 max-w-7xl mx-auto">
+        {renderBackHeader('Billing & Subscription')}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-[#00b894]/20 border-2 border-[#00b894] rounded-2xl p-6 shadow-xl space-y-4">
-            <span className="px-3 py-1 bg-[#00b894] text-white font-black rounded-full text-xs inline-block">Pro #250,000</span>
+            <span className="px-3 py-1 bg-[#00b894] text-white font-black rounded-full text-xs inline-block">Pro ₦250,000</span>
             <h3 className="text-lg font-black text-white">Pro Organizer Plan</h3>
             <ul className="space-y-2 text-xs text-slate-200">
               <li>✓ Multiple active events</li>
@@ -548,7 +526,7 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
               <li>• Standard Ticketa fees</li>
             </ul>
             <button className="w-full py-2.5 bg-slate-800 text-slate-300 font-extrabold rounded-xl text-xs cursor-pointer">
-              Upgrade to Free
+              Upgrade
             </button>
           </div>
         </div>
@@ -556,10 +534,11 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
     );
   }
 
-  // SUBPAGE 6: Notification (IMG_2951.jpeg)
+  // SUBPAGE 6: Notification
   if (activeSub === 'notifications') {
     return (
       <div className="space-y-6 max-w-5xl mx-auto">
+        {renderBackHeader('Notifications')}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {[
             { title: 'Event Notifications', items: ['Event published/ unpublished', 'Event approved / rejected', 'Event starting soon', 'Low ticket warnings'] },
@@ -584,10 +563,11 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
     );
   }
 
-  // SUBPAGE 7: Default Event Settings (IMG_2952.jpeg)
+  // SUBPAGE 7: Default Event Settings
   if (activeSub === 'defaults') {
     return (
       <div className="space-y-6 max-w-4xl mx-auto">
+        {renderBackHeader('Default Event Settings')}
         <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-4 text-xs">
           <h3 className="text-base font-extrabold text-white border-b border-slate-800 pb-3">Event Basics Defaults</h3>
           <div className="space-y-3">
@@ -608,10 +588,11 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
     );
   }
 
-  // SUBPAGE 8: Integrations (IMG_2954.jpeg)
+  // SUBPAGE 8: Integrations
   if (activeSub === 'integrations') {
     return (
       <div className="space-y-6 max-w-5xl mx-auto">
+        {renderBackHeader('Integrations & API')}
         <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-4">
           <h3 className="text-base font-extrabold text-white border-b border-slate-800 pb-3">Payment Gateways</h3>
           <div className="space-y-3 text-xs">
@@ -629,10 +610,11 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
     );
   }
 
-  // SUBPAGE 9: Legal & Compliance (IMG_2955.jpeg)
+  // SUBPAGE 9: Legal & Compliance
   if (activeSub === 'legal') {
     return (
       <div className="space-y-6 max-w-6xl mx-auto">
+        {renderBackHeader('Legal & Compliance')}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {[
             'GDPR Compliance',

@@ -15,7 +15,7 @@ import { OrganizerAnalytics } from '../components/OrganizerAnalytics';
 import { OrganizerTicketSales } from '../components/OrganizerTicketSales';
 import { OrganizerCheckIns } from '../components/OrganizerCheckIns';
 import { CreateEventModal } from '../components/CreateEventModal';
-import { OrganizerSettings } from '../components/OrganizerSettings';
+import { OrganizerSettings, SettingsSubSection } from '../components/OrganizerSettings';
 import { OrganizerOnboardingModal } from '../components/OrganizerOnboardingModal';
 
 interface OrganizerDashboardPageProps {
@@ -39,6 +39,7 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
   const [isCreateOrgOpen, setIsCreateOrgOpen] = useState(false);
   const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
   const [subpageTitle, setSubpageTitle] = useState<string | null>(null);
+  const [settingsSubSection, setSettingsSubSection] = useState<SettingsSubSection>(null);
 
   // Data states for active organization with default safe fallbacks
   const [metrics, setMetrics] = useState({
@@ -119,12 +120,19 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
       onTabChange={(tab) => {
         setActiveTab(tab);
         setSubpageTitle(null);
+        setSettingsSubSection(null);
         const subpath = tab === 'overview' ? '/organizer/dashboard' : `/organizer/${tab}`;
         window.history.pushState({}, '', subpath);
       }}
       onSwitchToAttendee={onSwitchToAttendee}
       subpageTitle={subpageTitle}
-      onBackToSettingsHub={() => setSubpageTitle(null)}
+      onBackToSettingsHub={() => {
+        setSubpageTitle(null);
+        setSettingsSubSection(null);
+      }}
+      events={events}
+      orders={orders}
+      attendees={attendees}
     >
       {activeTab === 'overview' && (
         <OrganizerOverview
@@ -160,7 +168,11 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
         <OrganizerSettings
           activeOrg={effectiveOrg}
           onRefreshOrg={loadOrgData}
-          onSubSectionChange={(title) => setSubpageTitle(title)}
+          subSection={settingsSubSection}
+          onSubSectionChange={(sub, title) => {
+            setSettingsSubSection(sub);
+            setSubpageTitle(title);
+          }}
         />
       )}
 
