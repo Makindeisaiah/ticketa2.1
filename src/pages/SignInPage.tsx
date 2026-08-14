@@ -13,7 +13,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   onNavigateToForgotPassword,
   onSuccessRedirect,
 }) => {
-  const { signIn, isConfigured } = useAuth();
+  const { signInAttendee, isConfigured } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -33,7 +33,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
 
     setLoading(true);
 
-    const result = await signIn({ email, password });
+    const result = await signInAttendee({ email, password });
 
     setLoading(false);
 

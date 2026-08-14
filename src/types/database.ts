@@ -6,6 +6,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+export type AccountType = 'ATTENDEE' | 'ORGANIZER' | 'ADMIN';
 export type UserRole = 'ATTENDEE' | 'ORGANIZER' | 'STAFF' | 'ADMIN';
 export type OrgMemberRole = 'OWNER' | 'ADMIN' | 'MANAGER' | 'MEMBER';
 export type OrganizerType = 'INDIVIDUAL' | 'BUSINESS' | 'NON_PROFIT' | 'AGENCY';
@@ -16,6 +17,34 @@ export type OrderStatus = 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED' | 'REFUNDE
 export type PaymentStatus = 'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'CANCELLED' | 'REFUNDED';
 export type PayoutStatus = 'PENDING' | 'PROCESSING' | 'PAID' | 'FAILED';
 export type CheckInStatus = 'SUCCESS' | 'ALREADY_CHECKED_IN' | 'INVALID_TICKET' | 'WRONG_EVENT' | 'CANCELLED_TICKET';
+
+export interface AccountTypeRecord {
+  user_id: string;
+  account_type: AccountType;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AttendeeProfile {
+  id: string;
+  full_name: string;
+  email: string;
+  phone_number?: string | null;
+  avatar_url?: string | null;
+  is_email_verified: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrganizerProfile {
+  id: string;
+  full_name: string;
+  email: string;
+  phone_number?: string | null;
+  avatar_url?: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface Profile {
   id: string;

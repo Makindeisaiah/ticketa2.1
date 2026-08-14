@@ -1,31 +1,47 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { AuthUser } from '../types';
+import { AuthUser, AccountType, AttendeeProfile, OrganizerProfile } from '../types';
 
-interface SignUpData {
+export interface SignUpAttendeeData {
   fullName: string;
   email: string;
   phoneNumber: string;
   password: string;
-  role?: 'ATTENDEE' | 'ORGANIZER' | 'STAFF' | 'ADMIN';
+  role?: 'ATTENDEE';
   redirectTo?: string;
 }
 
-interface SignInData {
+export interface SignUpOrganizerData {
+  fullName: string;
   email: string;
+  phoneNumber?: string;
   password: string;
+  role?: 'ORGANIZER';
+  redirectTo?: string;
 }
 
-interface AuthContextType {
+export interface SignInData {
+  email: string;
+  password: string;
+  targetPortal?: 'ATTENDEE' | 'ORGANIZER';
+}
+
+export interface AuthContextType {
   user: AuthUser | null;
   session: Session | null;
+  accountType: AccountType | null;
+  attendeeProfile: AttendeeProfile | null;
+  organizerProfile: OrganizerProfile | null;
   loading: boolean;
   isConfigured: boolean;
   authNotification: { type: 'success' | 'info' | 'error'; message: string } | null;
   clearAuthNotification: () => void;
-  signUpAttendee: (data: SignUpData) => Promise<{ success: boolean; requiresEmailVerification?: boolean; error?: string }>;
+  signUpAttendee: (data: SignUpAttendeeData) => Promise<{ success: boolean; requiresEmailVerification?: boolean; error?: string }>;
+  signUpOrganizer: (data: SignUpOrganizerData) => Promise<{ success: boolean; requiresEmailVerification?: boolean; user?: AuthUser; error?: string }>;
   signIn: (data: SignInData) => Promise<{ success: boolean; user?: AuthUser; error?: string }>;
+  signInAttendee: (data: { email: string; password: string }) => Promise<{ success: boolean; user?: AuthUser; error?: string }>;
+  signInOrganizer: (data: { email: string; password: string }) => Promise<{ success: boolean; user?: AuthUser; error?: string }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   updatePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
@@ -37,78 +53,158 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [accountType, setAccountType] = useState<AccountType | null>(null);
+  const [attendeeProfile, setAttendeeProfile] = useState<AttendeeProfile | null>(null);
+  const [organizerProfile, setOrganizerProfile] = useState<OrganizerProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [authNotification, setAuthNotification] = useState<{ type: 'success' | 'info' | 'error'; message: string } | null>(null);
 
   const clearAuthNotification = () => setAuthNotification(null);
 
-  // Helper to fetch profile from public.profiles
-  const fetchUserProfile = async (supabaseUser: User): Promise<AuthUser> => {
-    let fullName = (supabaseUser.user_metadata?.full_name as string) || 'Ticketa Attendee';
+  // Helper to determine and load account type & profile
+  const fetchUserAccountAndProfiles = async (
+    supabaseUser: User
+  ): Promise<{
+    authUser: AuthUser;
+    type: AccountType;
+    attProfile: AttendeeProfile | null;
+    orgProfile: OrganizerProfile | null;
+  }> => {
+    let determinedType: AccountType = 'ATTENDEE';
+    let fullName = (supabaseUser.user_metadata?.full_name as string) || '';
     let phoneNumber = (supabaseUser.user_metadata?.phone_number as string) || '';
-    let role: AuthUser['role'] = (supabaseUser.user_metadata?.role as any) || 'ATTENDEE';
+    let attProfile: AttendeeProfile | null = null;
+    let orgProfile: OrganizerProfile | null = null;
+
+    // First check user metadata
+    const metaAccountType = (supabaseUser.user_metadata?.account_type || supabaseUser.user_metadata?.role) as string;
+    if (metaAccountType && ['ORGANIZER', 'ADMIN'].includes(metaAccountType.toUpperCase())) {
+      determinedType = metaAccountType.toUpperCase() === 'ADMIN' ? 'ADMIN' : 'ORGANIZER';
+    }
 
     if (isSupabaseConfigured) {
       try {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', supabaseUser.id)
-          .single();
+        // 1. Query public.account_types
+        const { data: accountTypeData } = await supabase
+          .from('account_types')
+          .select('account_type')
+          .eq('user_id', supabaseUser.id)
+          .maybeSingle();
 
-        if (profile) {
-          fullName = profile.full_name || fullName;
-          phoneNumber = profile.phone_number || phoneNumber;
-          role = (profile.role as AuthUser['role']) || role;
-          
-          // Ensure is_email_verified in profiles is synced if Supabase confirmed email
-          if (supabaseUser.email_confirmed_at && !profile.is_email_verified) {
-            await supabase.from('profiles').update({ is_email_verified: true }).eq('id', supabaseUser.id);
+        if (accountTypeData?.account_type) {
+          determinedType = accountTypeData.account_type as AccountType;
+        }
+
+        // 2. Fetch appropriate profile table
+        if (determinedType === 'ORGANIZER' || determinedType === 'ADMIN') {
+          const { data: orgData } = await supabase
+            .from('organizer_profiles')
+            .select('*')
+            .eq('id', supabaseUser.id)
+            .maybeSingle();
+
+          if (orgData) {
+            orgProfile = orgData as OrganizerProfile;
+            fullName = orgData.full_name || fullName;
+            phoneNumber = orgData.phone_number || phoneNumber;
+          } else {
+            // Check legacy profiles if organizer_profiles not yet migrated
+            const { data: legacyProfile } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', supabaseUser.id)
+              .maybeSingle();
+
+            if (legacyProfile && ['ORGANIZER', 'ADMIN', 'STAFF'].includes(legacyProfile.role)) {
+              fullName = legacyProfile.full_name || fullName;
+              phoneNumber = legacyProfile.phone_number || phoneNumber;
+              determinedType = legacyProfile.role === 'ADMIN' ? 'ADMIN' : 'ORGANIZER';
+            }
           }
         } else {
-          // Create profile if missing
-          await supabase.from('profiles').upsert({
-            id: supabaseUser.id,
-            full_name: fullName,
-            email: supabaseUser.email || '',
-            phone_number: phoneNumber,
-            role,
-            is_email_verified: Boolean(supabaseUser.email_confirmed_at),
-          });
+          // Attendee
+          const { data: attData } = await supabase
+            .from('attendee_profiles')
+            .select('*')
+            .eq('id', supabaseUser.id)
+            .maybeSingle();
+
+          if (attData) {
+            attProfile = attData as AttendeeProfile;
+            fullName = attData.full_name || fullName;
+            phoneNumber = attData.phone_number || phoneNumber;
+
+            // Sync email verification if confirmed in auth
+            if (supabaseUser.email_confirmed_at && !attData.is_email_verified) {
+              await supabase
+                .from('attendee_profiles')
+                .update({ is_email_verified: true, updated_at: new Date().toISOString() })
+                .eq('id', supabaseUser.id);
+            }
+          } else {
+            // Check legacy profiles if attendee_profiles not yet populated
+            const { data: legacyProfile } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', supabaseUser.id)
+              .maybeSingle();
+
+            if (legacyProfile) {
+              fullName = legacyProfile.full_name || fullName;
+              phoneNumber = legacyProfile.phone_number || phoneNumber;
+            }
+          }
         }
       } catch (e) {
-        console.warn('Profile sync notice:', e);
+        console.warn('Account type/profile fetch notice:', e);
       }
     }
 
-    return {
+    if (!fullName) {
+      fullName = determinedType === 'ORGANIZER' ? 'Ticketa Organizer' : 'Ticketa Attendee';
+    }
+
+    const authUser: AuthUser = {
       id: supabaseUser.id,
       email: supabaseUser.email || '',
       fullName,
       phoneNumber,
-      role,
+      accountType: determinedType,
+      role: determinedType === 'ORGANIZER' ? 'ORGANIZER' : determinedType === 'ADMIN' ? 'ADMIN' : 'ATTENDEE',
       isEmailVerified: Boolean(supabaseUser.email_confirmed_at),
     };
+
+    return { authUser, type: determinedType, attProfile, orgProfile };
   };
 
-  const refreshProfile = async () => {
+  const refreshProfile = useCallback(async () => {
     if (session?.user) {
-      const updatedUser = await fetchUserProfile(session.user);
-      setUser(updatedUser);
+      const { authUser, type, attProfile, orgProfile } = await fetchUserAccountAndProfiles(session.user);
+      setUser(authUser);
+      setAccountType(type);
+      setAttendeeProfile(attProfile);
+      setOrganizerProfile(orgProfile);
     }
-  };
+  }, [session?.user]);
 
   useEffect(() => {
     let mounted = true;
 
     async function initAuth() {
-      // Check URL parameters for email verification or password reset callback
       const href = window.location.href;
-      const isAuthCallback = href.includes('type=signup') || href.includes('type=recovery') || href.includes('/auth/callback') || href.includes('/callback') || href.includes('access_token=') || href.includes('code=');
+      const isAuthCallback =
+        href.includes('type=signup') ||
+        href.includes('type=recovery') ||
+        href.includes('/auth/callback') ||
+        href.includes('/callback') ||
+        href.includes('access_token=') ||
+        href.includes('code=');
 
       if (href.includes('error_description=') || href.includes('error=')) {
         const match = href.match(/error_description=([^&]+)/);
-        const errorMsg = match ? decodeURIComponent(match[1].replace(/\+/g, ' ')) : 'Email verification failed or link expired.';
+        const errorMsg = match
+          ? decodeURIComponent(match[1].replace(/\+/g, ' '))
+          : 'Email verification failed or link expired.';
         setAuthNotification({
           type: 'error',
           message: errorMsg,
@@ -116,22 +212,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         window.history.replaceState({}, document.title, window.location.pathname);
       } else if (isSupabaseConfigured) {
         try {
-          const { data: { session: currentSession } } = await supabase.auth.getSession();
+          const {
+            data: { session: currentSession },
+          } = await supabase.auth.getSession();
+
           if (mounted) {
             setSession(currentSession);
             if (currentSession?.user) {
-              const authUser = await fetchUserProfile(currentSession.user);
+              const { authUser, type, attProfile, orgProfile } = await fetchUserAccountAndProfiles(
+                currentSession.user
+              );
               setUser(authUser);
+              setAccountType(type);
+              setAttendeeProfile(attProfile);
+              setOrganizerProfile(orgProfile);
 
               if (isAuthCallback) {
-                // Extract redirect parameter if present, otherwise check user role or current path
-                let destination = authUser.role === 'ORGANIZER' ? '/organizer' : '/';
+                let destination = type === 'ORGANIZER' ? '/organizer' : '/';
                 try {
                   const urlObj = new URL(href);
                   const redirectParam = urlObj.searchParams.get('redirect');
                   if (redirectParam) {
                     destination = redirectParam;
-                  } else if (authUser.role === 'ORGANIZER' || href.includes('/organizer')) {
+                  } else if (type === 'ORGANIZER' || href.includes('/organizer')) {
                     destination = '/organizer';
                   }
                 } catch (e) {}
@@ -147,7 +250,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     message: 'Your email address has been verified successfully! You are now logged in.',
                   });
                 }
-                // Clean up URL bar to destination path and dispatch popstate
+
                 window.history.replaceState({}, document.title, destination);
                 window.dispatchEvent(new Event('popstate'));
               }
@@ -167,25 +270,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Listen to Supabase Auth State Changes
     if (isSupabaseConfigured) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange(async (event, newSession) => {
         if (!mounted) return;
         setSession(newSession);
 
         if (newSession?.user) {
-          const authUser = await fetchUserProfile(newSession.user);
+          const { authUser, type, attProfile, orgProfile } = await fetchUserAccountAndProfiles(newSession.user);
           setUser(authUser);
+          setAccountType(type);
+          setAttendeeProfile(attProfile);
+          setOrganizerProfile(orgProfile);
 
-          // Handle verification callback events
           if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
             const href = window.location.href;
-            if (href.includes('type=signup') || href.includes('/auth/callback') || href.includes('/callback') || href.includes('code=')) {
-              let destination = authUser.role === 'ORGANIZER' ? '/organizer' : '/';
+            if (
+              href.includes('type=signup') ||
+              href.includes('/auth/callback') ||
+              href.includes('/callback') ||
+              href.includes('code=')
+            ) {
+              let destination = type === 'ORGANIZER' ? '/organizer' : '/';
               try {
                 const urlObj = new URL(href);
                 const redirectParam = urlObj.searchParams.get('redirect');
                 if (redirectParam) {
                   destination = redirectParam;
-                } else if (authUser.role === 'ORGANIZER' || href.includes('/organizer')) {
+                } else if (type === 'ORGANIZER' || href.includes('/organizer')) {
                   destination = '/organizer';
                 }
               } catch (e) {}
@@ -207,6 +319,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         } else {
           setUser(null);
+          setAccountType(null);
+          setAttendeeProfile(null);
+          setOrganizerProfile(null);
         }
         setLoading(false);
       });
@@ -218,7 +333,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const signUpAttendee = async ({ fullName, email, phoneNumber, password, role = 'ATTENDEE', redirectTo = '/' }: SignUpData) => {
+  // 1. ATTENDEE SIGNUP FLOW
+  const signUpAttendee = async ({
+    fullName,
+    email,
+    phoneNumber,
+    password,
+    redirectTo = '/',
+  }: SignUpAttendeeData) => {
     if (!fullName.trim() || !email.trim() || !password) {
       return { success: false, error: 'Full name, email and password are required.' };
     }
@@ -226,25 +348,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!isSupabaseConfigured) {
       return {
         success: false,
-        error: 'Supabase database is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel or your .env file.',
+        error:
+          'Supabase database is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel or your .env file.',
       };
     }
 
     try {
-      // Direct redirect URL to /auth/callback with redirect query param
       const redirectUrl = redirectTo.startsWith('http')
         ? redirectTo
         : `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`;
 
       const { data, error } = await supabase.auth.signUp({
-        email,
+        email: email.trim().toLowerCase(),
         password,
         options: {
           emailRedirectTo: redirectUrl,
           data: {
             full_name: fullName.trim(),
             phone_number: phoneNumber.trim(),
-            role,
+            account_type: 'ATTENDEE',
+            role: 'ATTENDEE',
           },
         },
       });
@@ -254,18 +377,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (data.user) {
-        // Explicitly ensure profile is created in public.profiles with specified role
-        await supabase.from('profiles').upsert({
+        // 1. Insert into public.account_types
+        await supabase.from('account_types').upsert({
+          user_id: data.user.id,
+          account_type: 'ATTENDEE',
+          updated_at: new Date().toISOString(),
+        });
+
+        // 2. Insert into public.attendee_profiles
+        await supabase.from('attendee_profiles').upsert({
           id: data.user.id,
           full_name: fullName.trim(),
           email: email.trim().toLowerCase(),
-          phone_number: phoneNumber.trim(),
-          role,
+          phone_number: phoneNumber.trim() || null,
           is_email_verified: Boolean(data.user.email_confirmed_at),
+          updated_at: new Date().toISOString(),
         });
 
+        // 3. Sync public.profiles for backward compatibility
+        try {
+          await supabase.from('profiles').upsert({
+            id: data.user.id,
+            full_name: fullName.trim(),
+            email: email.trim().toLowerCase(),
+            phone_number: phoneNumber.trim() || null,
+            role: 'ATTENDEE',
+            is_email_verified: Boolean(data.user.email_confirmed_at),
+          });
+        } catch (e) {}
+
         const requiresVerification = !data.session && !data.user.email_confirmed_at;
-        
+
         if (data.session) {
           setSession(data.session);
           setUser({
@@ -273,9 +415,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: data.user.email || email,
             fullName: fullName.trim(),
             phoneNumber: phoneNumber.trim(),
-            role,
+            accountType: 'ATTENDEE',
+            role: 'ATTENDEE',
             isEmailVerified: Boolean(data.user.email_confirmed_at),
           });
+          setAccountType('ATTENDEE');
         }
 
         return {
@@ -284,13 +428,117 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
 
-      return { success: false, error: 'Failed to create account. Please try again.' };
+      return { success: false, error: 'Failed to create attendee account.' };
     } catch (e: any) {
       return { success: false, error: e.message || 'An unexpected error occurred.' };
     }
   };
 
-  const signIn = async ({ email, password }: SignInData) => {
+  // 2. ORGANIZER SIGNUP FLOW
+  const signUpOrganizer = async ({
+    fullName,
+    email,
+    phoneNumber = '',
+    password,
+    redirectTo = '/organizer',
+  }: SignUpOrganizerData) => {
+    if (!fullName.trim() || !email.trim() || !password) {
+      return { success: false, error: 'Full name, email and password are required.' };
+    }
+
+    if (!isSupabaseConfigured) {
+      return {
+        success: false,
+        error:
+          'Supabase database is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel or your .env file.',
+      };
+    }
+
+    try {
+      const redirectUrl = redirectTo.startsWith('http')
+        ? redirectTo
+        : `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`;
+
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            full_name: fullName.trim(),
+            phone_number: phoneNumber.trim(),
+            account_type: 'ORGANIZER',
+            role: 'ORGANIZER',
+          },
+        },
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      if (data.user) {
+        // 1. Insert into public.account_types
+        await supabase.from('account_types').upsert({
+          user_id: data.user.id,
+          account_type: 'ORGANIZER',
+          updated_at: new Date().toISOString(),
+        });
+
+        // 2. Insert into public.organizer_profiles
+        await supabase.from('organizer_profiles').upsert({
+          id: data.user.id,
+          full_name: fullName.trim(),
+          email: email.trim().toLowerCase(),
+          phone_number: phoneNumber.trim() || null,
+          updated_at: new Date().toISOString(),
+        });
+
+        // 3. Sync public.profiles for backward compatibility
+        try {
+          await supabase.from('profiles').upsert({
+            id: data.user.id,
+            full_name: fullName.trim(),
+            email: email.trim().toLowerCase(),
+            phone_number: phoneNumber.trim() || null,
+            role: 'ORGANIZER',
+            is_email_verified: Boolean(data.user.email_confirmed_at),
+          });
+        } catch (e) {}
+
+        const requiresVerification = !data.session && !data.user.email_confirmed_at;
+
+        const authUser: AuthUser = {
+          id: data.user.id,
+          email: data.user.email || email,
+          fullName: fullName.trim(),
+          phoneNumber: phoneNumber.trim(),
+          accountType: 'ORGANIZER',
+          role: 'ORGANIZER',
+          isEmailVerified: Boolean(data.user.email_confirmed_at),
+        };
+
+        if (data.session) {
+          setSession(data.session);
+          setUser(authUser);
+          setAccountType('ORGANIZER');
+        }
+
+        return {
+          success: true,
+          user: authUser,
+          requiresEmailVerification: requiresVerification,
+        };
+      }
+
+      return { success: false, error: 'Failed to create organizer account.' };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'An unexpected error occurred.' };
+    }
+  };
+
+  // 3. ATTENDEE SIGNIN (STRICT ISOLATION CHECK)
+  const signInAttendee = async ({ email, password }: { email: string; password: string }) => {
     if (!email.trim() || !password) {
       return { success: false, error: 'Email and password are required.' };
     }
@@ -298,7 +546,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!isSupabaseConfigured) {
       return {
         success: false,
-        error: 'Supabase database is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel or your .env file.',
+        error: 'Supabase database is not configured.',
       };
     }
 
@@ -313,9 +561,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (data.user) {
-        const authUser = await fetchUserProfile(data.user);
+        // Strict portal isolation validation
+        const { authUser, type, attProfile, orgProfile } = await fetchUserAccountAndProfiles(data.user);
+
+        if (type === 'ORGANIZER' || type === 'ADMIN') {
+          // BLOCK LOGIN FLOW & SIGN OUT IMMEDIATELY
+          await supabase.auth.signOut();
+          setUser(null);
+          setSession(null);
+          setAccountType(null);
+          return {
+            success: false,
+            error: 'This account is registered as an organizer. Please use the Organizer Login.',
+          };
+        }
+
+        // Valid Attendee
         setUser(authUser);
         setSession(data.session);
+        setAccountType('ATTENDEE');
+        setAttendeeProfile(attProfile);
+        setOrganizerProfile(null);
         return { success: true, user: authUser };
       }
 
@@ -325,6 +591,77 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // 4. ORGANIZER SIGNIN (STRICT ISOLATION CHECK)
+  const signInOrganizer = async ({ email, password }: { email: string; password: string }) => {
+    if (!email.trim() || !password) {
+      return { success: false, error: 'Email and password are required.' };
+    }
+
+    if (!isSupabaseConfigured) {
+      return {
+        success: false,
+        error: 'Supabase database is not configured.',
+      };
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      if (data.user) {
+        // Strict portal isolation validation
+        const { authUser, type, attProfile, orgProfile } = await fetchUserAccountAndProfiles(data.user);
+
+        if (type === 'ATTENDEE') {
+          // BLOCK LOGIN FLOW & SIGN OUT IMMEDIATELY
+          await supabase.auth.signOut();
+          setUser(null);
+          setSession(null);
+          setAccountType(null);
+          return {
+            success: false,
+            error: 'This account is registered as an attendee. Please use the Attendee Login.',
+          };
+        }
+
+        // Valid Organizer / Admin
+        setUser(authUser);
+        setSession(data.session);
+        setAccountType(type);
+        setAttendeeProfile(null);
+        setOrganizerProfile(orgProfile);
+        return { success: true, user: authUser };
+      }
+
+      return { success: false, error: 'Invalid login response.' };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Could not sign in.' };
+    }
+  };
+
+  // 5. GENERIC SIGN IN (DISPATCHES OR PERFORMS TARGET CHECK)
+  const signIn = async ({ email, password, targetPortal }: SignInData) => {
+    if (targetPortal === 'ATTENDEE') {
+      return signInAttendee({ email, password });
+    }
+    if (targetPortal === 'ORGANIZER') {
+      return signInOrganizer({ email, password });
+    }
+
+    // Default: detect portal from path if possible
+    if (window.location.pathname.startsWith('/organizer')) {
+      return signInOrganizer({ email, password });
+    }
+    return signInAttendee({ email, password });
+  };
+
+  // 6. SIGNOUT
   const signOut = async () => {
     if (isSupabaseConfigured) {
       try {
@@ -333,8 +670,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setUser(null);
     setSession(null);
+    setAccountType(null);
+    setAttendeeProfile(null);
+    setOrganizerProfile(null);
   };
 
+  // 7. PASSWORD RESET
   const resetPassword = async (email: string) => {
     if (!email.trim()) {
       return { success: false, error: 'Email address is required.' };
@@ -357,6 +698,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // 8. UPDATE PASSWORD
   const updatePassword = async (password: string) => {
     if (!password || password.length < 6) {
       return { success: false, error: 'Password must be at least 6 characters long.' };
@@ -382,12 +724,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         session,
+        accountType,
+        attendeeProfile,
+        organizerProfile,
         loading,
         isConfigured: isSupabaseConfigured,
         authNotification,
         clearAuthNotification,
         signUpAttendee,
+        signUpOrganizer,
         signIn,
+        signInAttendee,
+        signInOrganizer,
         signOut,
         resetPassword,
         updatePassword,

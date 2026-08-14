@@ -28,7 +28,7 @@ interface OrganizerAuthProps {
 }
 
 export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initialMode = 'signup' }) => {
-  const { signIn, signUpAttendee, isConfigured } = useAuth();
+  const { signInOrganizer, signUpOrganizer, isConfigured } = useAuth();
   
   // 'signin' or 'signup'
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
@@ -59,7 +59,7 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
   const [holderFullName, setHolderFullName] = useState('');
 
   // Sign In State
-  const [signInEmail, setSignInEmail] = useState('contact@makindeisaiah.com');
+  const [signInEmail, setSignInEmail] = useState('');
   const [signInPassword, setSignInPassword] = useState('');
   const [showSignInPassword, setShowSignInPassword] = useState(false);
 
@@ -90,8 +90,8 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
         })
       );
 
-      // Register user account with Supabase Auth
-      const signUpRes = await signUpAttendee({
+      // Register user account with Supabase Auth as ORGANIZER
+      const signUpRes = await signUpOrganizer({
         fullName,
         email: signUpEmail,
         phoneNumber,
@@ -115,7 +115,7 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
       }
 
       // If email verification was not required / autoconfirmed
-      const signInRes = await signIn({ email: signUpEmail, password: signUpPassword });
+      const signInRes = await signInOrganizer({ email: signUpEmail, password: signUpPassword });
       if (signInRes.success && signInRes.user) {
         const orgRes = await createOrganization(signInRes.user.id, {
           name: orgName || 'My Organization',
@@ -135,7 +135,7 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
         }
         localStorage.removeItem(pendingKey);
         setLoading(false);
-        if (onSuccess) onSuccess();
+        if (onSuccess) onSuccess(signInRes.user);
       } else {
         setMode('signin');
         setLoading(false);
@@ -187,7 +187,7 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
     }
 
     setLoading(true);
-    const result = await signIn({ email: signInEmail, password: signInPassword });
+    const result = await signInOrganizer({ email: signInEmail, password: signInPassword });
 
     if (result.success) {
       const activeUser = result.user;

@@ -50,15 +50,35 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       if (isSupabaseConfigured) {
         try {
-          // Fetch user profile from public.profiles
-          const { data: profileData } = await supabase
-            .from('profiles')
+          // Fetch user profile from public.organizer_profiles or public.profiles
+          const { data: orgProfData } = await supabase
+            .from('organizer_profiles')
             .select('*')
             .eq('id', targetUserId)
             .maybeSingle();
 
-          if (profileData) {
-            setProfile(profileData as Profile);
+          if (orgProfData) {
+            setProfile({
+              id: orgProfData.id,
+              full_name: orgProfData.full_name,
+              email: orgProfData.email,
+              phone_number: orgProfData.phone_number,
+              avatar_url: orgProfData.avatar_url,
+              role: 'ORGANIZER',
+              is_email_verified: true,
+              created_at: orgProfData.created_at,
+              updated_at: orgProfData.updated_at,
+            });
+          } else {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', targetUserId)
+              .maybeSingle();
+
+            if (profileData) {
+              setProfile(profileData as Profile);
+            }
           }
 
           // Fetch organizations created by user

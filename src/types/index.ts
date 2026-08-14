@@ -5,6 +5,7 @@ export type AppViewMode = 'ATTENDEE_WEB' | 'ATTENDEE_MOBILE' | 'ORGANIZER_DASHBO
 export interface AuthUser {
   id: string;
   email: string;
+  accountType?: 'ATTENDEE' | 'ORGANIZER' | 'ADMIN';
   role: 'ATTENDEE' | 'ORGANIZER' | 'STAFF' | 'ADMIN';
   fullName: string;
   phoneNumber?: string;

@@ -7,6 +7,7 @@
 -- 1. ENUM DEFINITIONS
 -- ------------------------------------------------------------------------------
 
+CREATE TYPE account_type AS ENUM ('ATTENDEE', 'ORGANIZER', 'ADMIN');
 CREATE TYPE user_role AS ENUM ('ATTENDEE', 'ORGANIZER', 'STAFF', 'ADMIN');
 CREATE TYPE org_member_role AS ENUM ('OWNER', 'ADMIN', 'MANAGER', 'MEMBER');
 CREATE TYPE organizer_type AS ENUM ('INDIVIDUAL', 'BUSINESS', 'NON_PROFIT', 'AGENCY');
@@ -19,10 +20,41 @@ CREATE TYPE payout_status AS ENUM ('PENDING', 'PROCESSING', 'PAID', 'FAILED');
 CREATE TYPE check_in_status AS ENUM ('SUCCESS', 'ALREADY_CHECKED_IN', 'INVALID_TICKET', 'WRONG_EVENT', 'CANCELLED_TICKET');
 
 -- ------------------------------------------------------------------------------
--- 2. CORE TABLES
+-- 2. CORE TABLES & ISOLATED PROFILE ARCHITECTURE
 -- ------------------------------------------------------------------------------
 
--- 2.1 Profiles (Extends Supabase auth.users)
+-- 2.0 Account Types (Portal Authority)
+CREATE TABLE IF NOT EXISTS public.account_types (
+    user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    account_type account_type NOT NULL DEFAULT 'ATTENDEE',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 2.1 Attendee Profiles (Dedicated Attendee Data Store)
+CREATE TABLE IF NOT EXISTS public.attendee_profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    full_name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    phone_number TEXT,
+    avatar_url TEXT,
+    is_email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 2.2 Organizer Profiles (Dedicated Organizer Identity Store)
+CREATE TABLE IF NOT EXISTS public.organizer_profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    full_name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    phone_number TEXT,
+    avatar_url TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 2.3 Legacy Profiles (Maintained for Backward Compatibility)
 CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     full_name TEXT NOT NULL,
@@ -406,26 +438,48 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
+DECLARE
+    v_account_type TEXT;
+    v_full_name TEXT;
+    v_phone TEXT;
 BEGIN
-    INSERT INTO public.profiles (
-        id,
-        full_name,
-        email,
-        phone_number,
-        role,
-        is_email_verified
-    )
-    VALUES (
-        NEW.id,
-        COALESCE(NEW.raw_user_meta_data->>'full_name', 'Ticketa User'),
-        NEW.email,
-        NEW.raw_user_meta_data->>'phone_number',
-        COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'ATTENDEE'::user_role),
-        FALSE
-    )
-    ON CONFLICT (id) DO UPDATE SET
-        email = EXCLUDED.email,
-        updated_at = NOW();
+    v_account_type := COALESCE(
+        NEW.raw_user_meta_data->>'account_type',
+        NEW.raw_user_meta_data->>'role',
+        'ATTENDEE'
+    );
+    v_full_name := COALESCE(NEW.raw_user_meta_data->>'full_name', 'Ticketa User');
+    v_phone := NEW.raw_user_meta_data->>'phone_number';
+
+    IF UPPER(v_account_type) IN ('ORGANIZER', 'ADMIN') THEN
+        INSERT INTO public.account_types (user_id, account_type)
+        VALUES (NEW.id, 'ORGANIZER'::account_type)
+        ON CONFLICT (user_id) DO NOTHING;
+
+        INSERT INTO public.organizer_profiles (id, full_name, email, phone_number)
+        VALUES (NEW.id, v_full_name, NEW.email, v_phone)
+        ON CONFLICT (id) DO UPDATE SET
+            email = EXCLUDED.email,
+            updated_at = NOW();
+
+        INSERT INTO public.profiles (id, full_name, email, phone_number, role, is_email_verified)
+        VALUES (NEW.id, v_full_name, NEW.email, v_phone, 'ORGANIZER', FALSE)
+        ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, role = 'ORGANIZER', updated_at = NOW();
+    ELSE
+        INSERT INTO public.account_types (user_id, account_type)
+        VALUES (NEW.id, 'ATTENDEE'::account_type)
+        ON CONFLICT (user_id) DO NOTHING;
+
+        INSERT INTO public.attendee_profiles (id, full_name, email, phone_number, is_email_verified)
+        VALUES (NEW.id, v_full_name, NEW.email, v_phone, FALSE)
+        ON CONFLICT (id) DO UPDATE SET
+            email = EXCLUDED.email,
+            updated_at = NOW();
+
+        INSERT INTO public.profiles (id, full_name, email, phone_number, role, is_email_verified)
+        VALUES (NEW.id, v_full_name, NEW.email, v_phone, 'ATTENDEE', FALSE)
+        ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, role = 'ATTENDEE', updated_at = NOW();
+    END IF;
 
     RETURN NEW;
 END;
@@ -442,6 +496,9 @@ CREATE TRIGGER on_auth_user_created
 -- ------------------------------------------------------------------------------
 
 -- Enable RLS on all tables
+ALTER TABLE public.account_types ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.attendee_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.organizer_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.organization_members ENABLE ROW LEVEL SECURITY;
@@ -460,6 +517,36 @@ ALTER TABLE public.payouts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.check_ins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+
+-- Account Types Policies
+CREATE POLICY "Account types viewable by authenticated users"
+    ON public.account_types FOR SELECT USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Users can insert their own account type"
+    ON public.account_types FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own account type"
+    ON public.account_types FOR UPDATE USING (auth.uid() = user_id);
+
+-- Attendee Profiles Policies
+CREATE POLICY "Attendees can view their own profile"
+    ON public.attendee_profiles FOR SELECT USING (auth.uid() = id OR auth.role() = 'authenticated');
+
+CREATE POLICY "Attendees can insert their own profile"
+    ON public.attendee_profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Attendees can update their own profile"
+    ON public.attendee_profiles FOR UPDATE USING (auth.uid() = id);
+
+-- Organizer Profiles Policies
+CREATE POLICY "Organizer profiles viewable by authenticated users"
+    ON public.organizer_profiles FOR SELECT USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Organizers can insert their own profile"
+    ON public.organizer_profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Organizers can update their own profile"
+    ON public.organizer_profiles FOR UPDATE USING (auth.uid() = id);
 
 -- Profiles Policies
 CREATE POLICY "Public profiles are viewable by anyone or authenticated users"
