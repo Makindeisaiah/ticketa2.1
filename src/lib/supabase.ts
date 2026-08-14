@@ -2,8 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 
 const metaEnv = (import.meta as any).env || {};
 
-const rawUrl = metaEnv.VITE_SUPABASE_URL || '';
-const rawKey = metaEnv.VITE_SUPABASE_ANON_KEY || '';
+const rawUrl = (metaEnv.VITE_SUPABASE_URL || '').trim();
+const rawKey = (metaEnv.VITE_SUPABASE_ANON_KEY || '').trim();
 
 export const isSupabaseConfigured = Boolean(
   rawUrl && 
@@ -12,7 +12,7 @@ export const isSupabaseConfigured = Boolean(
   rawUrl.startsWith('https://')
 );
 
-const supabaseUrl = isSupabaseConfigured ? rawUrl : 'https://placeholder-project.supabase.co';
+const supabaseUrl = isSupabaseConfigured ? rawUrl.replace(/\/+$/, '') : 'https://placeholder-project.supabase.co';
 const supabaseAnonKey = isSupabaseConfigured ? rawKey : 'placeholder-anon-key';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {

@@ -450,7 +450,7 @@ export async function getOrganizationOrders(orgId: string): Promise<any[]> {
       .from('orders')
       .select(`
         *,
-        profiles:user_id (full_name, email, phone_number),
+        attendee_profiles:user_id (full_name, email, phone_number),
         order_items (*)
       `)
       .in('event_id', eventIds)
@@ -461,11 +461,11 @@ export async function getOrganizationOrders(orgId: string): Promise<any[]> {
       return [];
     }
 
-    return (orders || []).map((o) => ({
+    return (orders || []).map((o: any) => ({
       ...o,
       event_title: eventMap.get(o.event_id) || 'Event',
-      customer_name: o.profiles?.full_name || 'Attendee',
-      customer_email: o.profiles?.email || 'N/A',
+      customer_name: o.attendee_profiles?.full_name || o.customer_name || 'Attendee',
+      customer_email: o.attendee_profiles?.email || o.customer_email || 'N/A',
     }));
   } catch (e) {
     console.error('Org orders exception:', e);
@@ -492,7 +492,7 @@ export async function getOrganizationAttendees(orgId: string): Promise<any[]> {
       .from('tickets')
       .select(`
         *,
-        profiles:user_id (full_name, email),
+        attendee_profiles:user_id (full_name, email),
         ticket_types (name, price)
       `)
       .in('event_id', eventIds)
@@ -503,11 +503,11 @@ export async function getOrganizationAttendees(orgId: string): Promise<any[]> {
       return [];
     }
 
-    return (tickets || []).map((t) => ({
+    return (tickets || []).map((t: any) => ({
       ...t,
       event_title: eventMap.get(t.event_id) || 'Event',
-      attendee_name: t.profiles?.full_name || 'Attendee',
-      attendee_email: t.profiles?.email || 'N/A',
+      attendee_name: t.attendee_name || t.attendee_profiles?.full_name || 'Attendee',
+      attendee_email: t.attendee_email || t.attendee_profiles?.email || 'N/A',
       ticket_type_name: t.ticket_types?.name || 'Standard',
       price: t.ticket_types?.price || 0,
     }));
@@ -633,7 +633,7 @@ export async function getOrganizationMembers(orgId: string): Promise<any[]> {
       .from('organization_members')
       .select(`
         *,
-        profiles:user_id (full_name, email, role, avatar_url)
+        organizer_profiles:user_id (full_name, email, avatar_url)
       `)
       .eq('organization_id', orgId);
 
@@ -642,11 +642,11 @@ export async function getOrganizationMembers(orgId: string): Promise<any[]> {
       return [];
     }
 
-    return (data || []).map((m) => ({
+    return (data || []).map((m: any) => ({
       ...m,
-      full_name: m.profiles?.full_name || 'Team Member',
-      email: m.profiles?.email || 'N/A',
-      avatar_url: m.profiles?.avatar_url,
+      full_name: m.organizer_profiles?.full_name || 'Team Member',
+      email: m.organizer_profiles?.email || 'N/A',
+      avatar_url: m.organizer_profiles?.avatar_url,
     }));
   } catch (e) {
     console.error('Org members exception:', e);
@@ -664,13 +664,44 @@ export async function inviteOrganizationMember(
   if (!isSupabaseConfigured) return { success: false, error: 'Database unconfigured' };
 
   try {
-    const { data: profile } = await supabase
-      .from('profiles')
+    // 1. Check organizer_profiles
+    let targetUserId: string | null = null;
+    const { data: orgProfile } = await supabase
+      .from('organizer_profiles')
       .select('id, full_name')
       .eq('email', email.trim().toLowerCase())
-      .single();
+      .maybeSingle();
 
-    if (!profile) {
+    if (orgProfile) {
+      targetUserId = orgProfile.id;
+    } else {
+      // 2. Check attendee_profiles if user registered as attendee and auto-promote to organizer
+      const { data: attProfile } = await supabase
+        .from('attendee_profiles')
+        .select('id, full_name, phone_number, avatar_url')
+        .eq('email', email.trim().toLowerCase())
+        .maybeSingle();
+
+      if (attProfile) {
+        targetUserId = attProfile.id;
+        // Promote in account_types and organizer_profiles
+        await supabase.from('account_types').upsert({
+          user_id: attProfile.id,
+          account_type: 'ORGANIZER',
+          updated_at: new Date().toISOString(),
+        });
+        await supabase.from('organizer_profiles').upsert({
+          id: attProfile.id,
+          full_name: attProfile.full_name,
+          email: email.trim().toLowerCase(),
+          phone_number: attProfile.phone_number,
+          avatar_url: attProfile.avatar_url,
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
+
+    if (!targetUserId) {
       return {
         success: false,
         error: `No registered user found with email "${email}". User must create an account first.`,
@@ -679,7 +710,7 @@ export async function inviteOrganizationMember(
 
     const { error: insertErr } = await supabase.from('organization_members').insert({
       organization_id: orgId,
-      user_id: profile.id,
+      user_id: targetUserId,
       role,
       invited_by: invitedByUserId,
     });
@@ -696,7 +727,7 @@ export async function inviteOrganizationMember(
       organization_id: orgId,
       action: 'STAFF_INVITED',
       entity_type: 'ORGANIZATION_MEMBER',
-      entity_id: profile.id,
+      entity_id: targetUserId,
       metadata: { email, role },
     });
 

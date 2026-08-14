@@ -209,9 +209,12 @@ function MainAppContent() {
   };
 
   const tables = [
-    { name: 'profiles', columns: 'id, full_name, email, phone_number, avatar_url, role, is_email_verified', rls: 'Self update, Public view' },
-    { name: 'organizations', columns: 'id, name, type, country, phone_number, logo_url, created_by', rls: 'Org members only' },
+    { name: 'account_types', columns: 'user_id, account_type', rls: 'Self view & update' },
+    { name: 'attendee_profiles', columns: 'id, full_name, email, phone_number, avatar_url, is_email_verified', rls: 'Self update, Public view' },
+    { name: 'organizer_profiles', columns: 'id, full_name, email, phone_number, avatar_url, business_name', rls: 'Self update, Public view' },
+    { name: 'organizations', columns: 'id, name, type, country, phone_number, logo_url, created_by', rls: 'Org members & creators' },
     { name: 'organization_members', columns: 'id, organization_id, user_id, role, invited_by', rls: 'Org admin manage' },
+    { name: 'event_staff_assignments', columns: 'id, event_id, staff_user_id, assigned_by', rls: 'Org manage, Staff view' },
     { name: 'events', columns: 'id, organization_id, title, slug, venue_id, start_time, end_time, status', rls: 'Public if PUBLISHED, Org manage' },
     { name: 'venues', columns: 'id, organization_id, name, address, city, country, capacity', rls: 'Org manage' },
     { name: 'event_categories', columns: 'id, name, slug, icon_name', rls: 'Public read, Admin manage' },

@@ -1,29 +1,80 @@
 -- ==============================================================================
--- TICKETA 2.0 — FULL DATABASE SCHEMA & MIGRATION SCRIPT
--- PostgreSQL / Supabase Engine
+-- TICKETA 2.0 — CANONICAL DATABASE SCHEMA & COMPLETE DDL
+-- Target: Supabase PostgreSQL (PostgREST)
 -- ==============================================================================
 
 -- ------------------------------------------------------------------------------
--- 1. ENUM DEFINITIONS
+-- 1. EXTENSIONS & ENUM DEFINITIONS
 -- ------------------------------------------------------------------------------
 
-CREATE TYPE account_type AS ENUM ('ATTENDEE', 'ORGANIZER', 'ADMIN');
-CREATE TYPE user_role AS ENUM ('ATTENDEE', 'ORGANIZER', 'STAFF', 'ADMIN');
-CREATE TYPE org_member_role AS ENUM ('OWNER', 'ADMIN', 'MANAGER', 'MEMBER');
-CREATE TYPE organizer_type AS ENUM ('INDIVIDUAL', 'BUSINESS', 'NON_PROFIT', 'AGENCY');
-CREATE TYPE payout_account_type AS ENUM ('INDIVIDUAL', 'BUSINESS');
-CREATE TYPE event_status AS ENUM ('DRAFT', 'PUBLISHED', 'POSTPONED', 'CANCELLED', 'COMPLETED');
-CREATE TYPE ticket_status AS ENUM ('PENDING', 'VALID', 'USED', 'CANCELLED', 'REFUNDED');
-CREATE TYPE order_status AS ENUM ('PENDING', 'PAID', 'FAILED', 'CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED');
-CREATE TYPE payment_status AS ENUM ('PENDING', 'SUCCESSFUL', 'FAILED', 'CANCELLED', 'REFUNDED');
-CREATE TYPE payout_status AS ENUM ('PENDING', 'PROCESSING', 'PAID', 'FAILED');
-CREATE TYPE check_in_status AS ENUM ('SUCCESS', 'ALREADY_CHECKED_IN', 'INVALID_TICKET', 'WRONG_EVENT', 'CANCELLED_TICKET');
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+DO $$ BEGIN
+    CREATE TYPE account_type AS ENUM ('ATTENDEE', 'ORGANIZER', 'ADMIN');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE user_role AS ENUM ('ATTENDEE', 'ORGANIZER', 'STAFF', 'ADMIN');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE org_member_role AS ENUM ('OWNER', 'ADMIN', 'MANAGER', 'STAFF', 'MEMBER');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE organizer_type AS ENUM ('INDIVIDUAL', 'BUSINESS', 'NON_PROFIT', 'AGENCY');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE payout_account_type AS ENUM ('INDIVIDUAL', 'BUSINESS');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE event_status AS ENUM ('DRAFT', 'PUBLISHED', 'POSTPONED', 'CANCELLED', 'COMPLETED');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE ticket_status AS ENUM ('PENDING', 'VALID', 'USED', 'CANCELLED', 'REFUNDED');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE ticket_type_status AS ENUM ('ACTIVE', 'PAUSED', 'SOLD_OUT', 'HIDDEN');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE order_status AS ENUM ('PENDING', 'PAID', 'FAILED', 'CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE payment_status AS ENUM ('PENDING', 'SUCCESSFUL', 'FAILED', 'CANCELLED', 'REFUNDED');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE payout_status AS ENUM ('PENDING', 'PROCESSING', 'PAID', 'FAILED');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE check_in_status AS ENUM ('SUCCESS', 'ALREADY_CHECKED_IN', 'INVALID_TICKET', 'WRONG_EVENT', 'CANCELLED_TICKET', 'UNAUTHORIZED_SCANNER');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- ------------------------------------------------------------------------------
--- 2. CORE TABLES & ISOLATED PROFILE ARCHITECTURE
+-- 2. CORE IDENTITY & ACCOUNT TABLES
 -- ------------------------------------------------------------------------------
 
--- 2.0 Account Types (Portal Authority)
+-- 2.1 Account Types (Determines Portal Authority: ATTENDEE vs ORGANIZER vs ADMIN)
 CREATE TABLE IF NOT EXISTS public.account_types (
     user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     account_type account_type NOT NULL DEFAULT 'ATTENDEE',
@@ -31,7 +82,7 @@ CREATE TABLE IF NOT EXISTS public.account_types (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.1 Attendee Profiles (Dedicated Attendee Data Store)
+-- 2.2 Attendee Profiles (Dedicated Attendee Identity Store)
 CREATE TABLE IF NOT EXISTS public.attendee_profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     full_name TEXT NOT NULL,
@@ -43,75 +94,79 @@ CREATE TABLE IF NOT EXISTS public.attendee_profiles (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.2 Organizer Profiles (Dedicated Organizer Identity Store)
+-- 2.3 Organizer Profiles (Dedicated Organizer Identity Store)
 CREATE TABLE IF NOT EXISTS public.organizer_profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     full_name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
     phone_number TEXT,
     avatar_url TEXT,
+    business_name TEXT,
+    business_type organizer_type DEFAULT 'INDIVIDUAL',
+    country TEXT DEFAULT 'NG',
+    onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.3 Legacy Profiles (Maintained for Backward Compatibility)
-CREATE TABLE IF NOT EXISTS public.profiles (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    full_name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    phone_number TEXT,
-    avatar_url TEXT,
-    role user_role NOT NULL DEFAULT 'ATTENDEE',
-    is_email_verified BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+-- ------------------------------------------------------------------------------
+-- 3. ORGANIZATIONS, VENUES & CATEGORIES
+-- ------------------------------------------------------------------------------
 
--- 2.2 Organizations
+-- 3.1 Organizations
 CREATE TABLE IF NOT EXISTS public.organizations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
     type organizer_type NOT NULL DEFAULT 'INDIVIDUAL',
-    country TEXT NOT NULL,
+    country TEXT NOT NULL DEFAULT 'NG',
+    currency TEXT NOT NULL DEFAULT 'NGN',
     phone_number TEXT,
     logo_url TEXT,
     description TEXT,
     website TEXT,
-    created_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
+    bank_name TEXT,
+    bank_code TEXT,
+    account_number TEXT,
+    account_name TEXT,
+    recipient_code TEXT,
+    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by UUID NOT NULL REFERENCES public.organizer_profiles(id) ON DELETE RESTRICT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.3 Organization Members (Team & Permissions)
+-- 3.2 Organization Members (Team Roles: OWNER, ADMIN, MANAGER, STAFF, MEMBER)
 CREATE TABLE IF NOT EXISTS public.organization_members (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES public.organizer_profiles(id) ON DELETE CASCADE,
     role org_member_role NOT NULL DEFAULT 'MEMBER',
-    invited_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    invited_by UUID REFERENCES public.organizer_profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (organization_id, user_id)
 );
 
--- 2.4 Event Categories
+-- 3.3 Event Categories
 CREATE TABLE IF NOT EXISTS public.event_categories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL UNIQUE,
     slug TEXT NOT NULL UNIQUE,
+    description TEXT,
     icon_name TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.5 Venues
+-- 3.4 Venues
 CREATE TABLE IF NOT EXISTS public.venues (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    organization_id UUID REFERENCES public.organizations(id) ON DELETE SET NULL,
     name TEXT NOT NULL,
     address TEXT NOT NULL,
     city TEXT NOT NULL,
     state TEXT,
-    country TEXT NOT NULL,
+    country TEXT NOT NULL DEFAULT 'NG',
     postal_code TEXT,
     latitude NUMERIC(10, 8),
     longitude NUMERIC(11, 8),
@@ -120,10 +175,15 @@ CREATE TABLE IF NOT EXISTS public.venues (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.6 Events
+-- ------------------------------------------------------------------------------
+-- 4. EVENTS & TICKETING ARCHITECTURE
+-- ------------------------------------------------------------------------------
+
+-- 4.1 Canonical Events Table
 CREATE TABLE IF NOT EXISTS public.events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+    created_by UUID NOT NULL REFERENCES public.organizer_profiles(id) ON DELETE RESTRICT,
     title TEXT NOT NULL,
     slug TEXT NOT NULL UNIQUE,
     description TEXT,
@@ -136,56 +196,66 @@ CREATE TABLE IF NOT EXISTS public.events (
     end_time TIMESTAMPTZ NOT NULL,
     status event_status NOT NULL DEFAULT 'DRAFT',
     is_featured BOOLEAN NOT NULL DEFAULT FALSE,
+    platform_fee_percent NUMERIC(5, 2) NOT NULL DEFAULT 5.00,
+    platform_fee_fixed NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    fee_bearer TEXT NOT NULL DEFAULT 'ORGANIZER',
     published_at TIMESTAMPTZ,
-    created_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.7 Event Staff Assignments
+-- 4.2 Event Staff Assignments (Event-Specific Scanner Access)
 CREATE TABLE IF NOT EXISTS public.event_staff_assignments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
-    staff_user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    assigned_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    staff_user_id UUID NOT NULL REFERENCES public.organizer_profiles(id) ON DELETE CASCADE,
+    assigned_by UUID REFERENCES public.organizer_profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (event_id, staff_user_id)
 );
 
--- 2.8 Ticket Types
+-- 4.3 Ticket Types
 CREATE TABLE IF NOT EXISTS public.ticket_types (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
-    name TEXT NOT NULL, -- e.g. "Early Bird", "VIP", "Regular"
+    name TEXT NOT NULL,
     description TEXT,
     price NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
-    currency TEXT NOT NULL DEFAULT 'USD',
+    currency TEXT NOT NULL DEFAULT 'NGN',
     quantity_available INT NOT NULL,
     quantity_sold INT NOT NULL DEFAULT 0,
     min_per_order INT NOT NULL DEFAULT 1,
     max_per_order INT NOT NULL DEFAULT 10,
     sales_start_time TIMESTAMPTZ,
     sales_end_time TIMESTAMPTZ,
+    status ticket_type_status NOT NULL DEFAULT 'ACTIVE',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.9 Orders
+-- 4.4 Orders (Belongs to Attendee)
 CREATE TABLE IF NOT EXISTS public.orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_number TEXT NOT NULL UNIQUE,
-    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
+    user_id UUID NOT NULL REFERENCES public.attendee_profiles(id) ON DELETE RESTRICT,
     event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE RESTRICT,
+    subtotal_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    platform_fee NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
     total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
-    currency TEXT NOT NULL DEFAULT 'USD',
+    currency TEXT NOT NULL DEFAULT 'NGN',
     status order_status NOT NULL DEFAULT 'PENDING',
     payment_reference TEXT UNIQUE,
     idempotency_key TEXT UNIQUE,
+    customer_name TEXT,
+    customer_email TEXT,
+    customer_phone TEXT,
+    paid_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.10 Order Items
+-- 4.5 Order Items
 CREATE TABLE IF NOT EXISTS public.order_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
@@ -196,30 +266,33 @@ CREATE TABLE IF NOT EXISTS public.order_items (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.11 Payments
+-- 4.6 Payments
 CREATE TABLE IF NOT EXISTS public.payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE RESTRICT,
-    provider TEXT NOT NULL DEFAULT 'PAYSTACK_OR_STRIPE', -- Pluggable provider name
+    provider TEXT NOT NULL DEFAULT 'PAYSTACK',
     transaction_reference TEXT NOT NULL UNIQUE,
     amount NUMERIC(12, 2) NOT NULL,
-    currency TEXT NOT NULL DEFAULT 'USD',
+    currency TEXT NOT NULL DEFAULT 'NGN',
     status payment_status NOT NULL DEFAULT 'PENDING',
+    payment_method TEXT,
     raw_payload JSONB,
     verified_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.12 Tickets
+-- 4.7 Tickets (Issued Tickets Belong to Attendee)
 CREATE TABLE IF NOT EXISTS public.tickets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    ticket_code TEXT NOT NULL UNIQUE, -- Human readable code e.g. TCK-849201
-    qr_code_hash TEXT NOT NULL UNIQUE, -- Cryptographic QR payload string
+    ticket_code TEXT NOT NULL UNIQUE,
+    qr_code_hash TEXT NOT NULL UNIQUE,
     order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
     event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE RESTRICT,
     ticket_type_id UUID NOT NULL REFERENCES public.ticket_types(id) ON DELETE RESTRICT,
-    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT, -- Owner
+    user_id UUID NOT NULL REFERENCES public.attendee_profiles(id) ON DELETE RESTRICT,
+    attendee_name TEXT,
+    attendee_email TEXT,
     status ticket_status NOT NULL DEFAULT 'VALID',
     is_checked_in BOOLEAN NOT NULL DEFAULT FALSE,
     checked_in_at TIMESTAMPTZ,
@@ -227,7 +300,7 @@ CREATE TABLE IF NOT EXISTS public.tickets (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.13 Ticket Holders (Optional attendee information per individual ticket)
+-- 4.8 Ticket Holders
 CREATE TABLE IF NOT EXISTS public.ticket_holders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     ticket_id UUID NOT NULL REFERENCES public.tickets(id) ON DELETE CASCADE,
@@ -238,19 +311,23 @@ CREATE TABLE IF NOT EXISTS public.ticket_holders (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.14 Refunds
-CREATE TABLE IF NOT EXISTS public.refunds (
+-- ------------------------------------------------------------------------------
+-- 5. OPERATIONS, CHECK-INS & FINANCIALS
+-- ------------------------------------------------------------------------------
+
+-- 5.1 Check-Ins
+CREATE TABLE IF NOT EXISTS public.check_ins (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE RESTRICT,
-    payment_id UUID NOT NULL REFERENCES public.payments(id) ON DELETE RESTRICT,
-    amount NUMERIC(12, 2) NOT NULL,
-    reason TEXT,
-    requested_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
-    status TEXT NOT NULL DEFAULT 'COMPLETED',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    ticket_id UUID NOT NULL REFERENCES public.tickets(id) ON DELETE CASCADE,
+    event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
+    scanned_by UUID NOT NULL REFERENCES public.organizer_profiles(id) ON DELETE RESTRICT,
+    status check_in_status NOT NULL DEFAULT 'SUCCESS',
+    device_info TEXT,
+    notes TEXT,
+    scanned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.15 Payout Accounts
+-- 5.2 Payout Accounts
 CREATE TABLE IF NOT EXISTS public.payout_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
@@ -259,19 +336,20 @@ CREATE TABLE IF NOT EXISTS public.payout_accounts (
     bank_name TEXT NOT NULL,
     bank_code TEXT NOT NULL,
     account_number TEXT NOT NULL,
-    business_registration_number TEXT, -- CAC registration number for Nigeria / tax ID
+    business_registration_number TEXT,
     is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.16 Payouts
+-- 5.3 Payouts
 CREATE TABLE IF NOT EXISTS public.payouts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE RESTRICT,
-    payout_account_id UUID NOT NULL REFERENCES public.payout_accounts(id) ON DELETE RESTRICT,
+    payout_account_id UUID REFERENCES public.payout_accounts(id) ON DELETE SET NULL,
     amount NUMERIC(12, 2) NOT NULL,
-    currency TEXT NOT NULL DEFAULT 'USD',
+    currency TEXT NOT NULL DEFAULT 'NGN',
     status payout_status NOT NULL DEFAULT 'PENDING',
     reference TEXT UNIQUE,
     processed_at TIMESTAMPTZ,
@@ -279,35 +357,36 @@ CREATE TABLE IF NOT EXISTS public.payouts (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.17 Check-Ins
-CREATE TABLE IF NOT EXISTS public.check_ins (
+-- 5.4 Refunds
+CREATE TABLE IF NOT EXISTS public.refunds (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    ticket_id UUID NOT NULL REFERENCES public.tickets(id) ON DELETE CASCADE,
-    event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
-    scanned_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
-    status check_in_status NOT NULL DEFAULT 'SUCCESS',
-    notes TEXT,
-    scanned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE RESTRICT,
+    payment_id UUID NOT NULL REFERENCES public.payments(id) ON DELETE RESTRICT,
+    amount NUMERIC(12, 2) NOT NULL,
+    reason TEXT,
+    requested_by UUID NOT NULL REFERENCES public.organizer_profiles(id) ON DELETE RESTRICT,
+    status TEXT NOT NULL DEFAULT 'COMPLETED',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.18 Notifications
+-- 5.5 Notifications
 CREATE TABLE IF NOT EXISTS public.notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     body TEXT NOT NULL,
-    type TEXT NOT NULL, -- 'TICKET_PURCHASE', 'EVENT_UPDATE', 'REMINDER', etc.
+    type TEXT NOT NULL,
     payload JSONB,
     is_read BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2.19 Audit Logs
+-- 5.6 Audit Logs
 CREATE TABLE IF NOT EXISTS public.audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    actor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    actor_id UUID REFERENCES public.organizer_profiles(id) ON DELETE SET NULL,
     organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
-    action TEXT NOT NULL, -- e.g. 'EVENT_PUBLISHED', 'CHECK_IN_PERFORMED', 'STAFF_INVITED'
+    action TEXT NOT NULL,
     entity_type TEXT NOT NULL,
     entity_id UUID,
     metadata JSONB,
@@ -315,9 +394,12 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
 );
 
 -- ------------------------------------------------------------------------------
--- 3. INDEXES FOR PERFORMANCE
+-- 6. PERFORMANCE INDEXES
 -- ------------------------------------------------------------------------------
 
+CREATE INDEX IF NOT EXISTS idx_account_types_user ON public.account_types(user_id);
+CREATE INDEX IF NOT EXISTS idx_attendee_profiles_email ON public.attendee_profiles(email);
+CREATE INDEX IF NOT EXISTS idx_organizer_profiles_email ON public.organizer_profiles(email);
 CREATE INDEX IF NOT EXISTS idx_events_org ON public.events(organization_id);
 CREATE INDEX IF NOT EXISTS idx_events_status ON public.events(status);
 CREATE INDEX IF NOT EXISTS idx_events_start ON public.events(start_time);
@@ -330,7 +412,7 @@ CREATE INDEX IF NOT EXISTS idx_checkins_ticket ON public.check_ins(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_checkins_event ON public.check_ins(event_id);
 
 -- ------------------------------------------------------------------------------
--- 4. ATOMIC CHECK-IN FUNCTION (PREVENTS RACE CONDITIONS & DUPLICATE SCANS)
+-- 7. ATOMIC SCANNER-VALIDATED CHECK-IN FUNCTION
 -- ------------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.check_in_ticket(
@@ -343,16 +425,76 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
+    v_scanner_org_role org_member_role;
+    v_event_org_id UUID;
+    v_is_assigned BOOLEAN := FALSE;
     v_ticket RECORD;
-    v_result JSONB;
 BEGIN
-    -- Select and lock the ticket row FOR UPDATE to ensure atomic access
+    -- 1. Get Event's Organization ID
+    SELECT organization_id INTO v_event_org_id
+    FROM public.events
+    WHERE id = p_event_id;
+
+    IF v_event_org_id IS NULL THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'status', 'INVALID_TICKET',
+            'message', 'Target event does not exist.'
+        );
+    END IF;
+
+    -- 2. Verify Scanner Authorization
+    -- Check if scanner is organization OWNER, ADMIN, MANAGER, or STAFF
+    SELECT om.role INTO v_scanner_org_role
+    FROM public.organization_members om
+    WHERE om.organization_id = v_event_org_id
+      AND om.user_id = p_scanned_by;
+
+    -- If not directly in organization_members, check if scanner is the organization creator
+    IF v_scanner_org_role IS NULL THEN
+        IF EXISTS (SELECT 1 FROM public.organizations WHERE id = v_event_org_id AND created_by = p_scanned_by) THEN
+            v_scanner_org_role := 'OWNER';
+        END IF;
+    END IF;
+
+    -- Authorization Evaluation
+    IF v_scanner_org_role IS NULL THEN
+        -- Scanner does not belong to the organization
+        RETURN jsonb_build_object(
+            'success', false,
+            'status', 'UNAUTHORIZED_SCANNER',
+            'message', 'You do not have permission to scan tickets for this event.'
+        );
+    ELSIF v_scanner_org_role = 'MEMBER' THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'status', 'UNAUTHORIZED_SCANNER',
+            'message', 'Members cannot scan tickets. Staff or Manager role required.'
+        );
+    ELSIF v_scanner_org_role = 'STAFF' THEN
+        -- STAFF must be explicitly assigned to this specific event
+        SELECT EXISTS (
+            SELECT 1 FROM public.event_staff_assignments
+            WHERE event_id = p_event_id AND staff_user_id = p_scanned_by
+        ) INTO v_is_assigned;
+
+        IF NOT v_is_assigned THEN
+            RETURN jsonb_build_object(
+                'success', false,
+                'status', 'UNAUTHORIZED_SCANNER',
+                'message', 'Staff member is not assigned to scan this event.'
+            );
+        END IF;
+    END IF;
+    -- OWNER, ADMIN, MANAGER, and verified assigned STAFF proceed!
+
+    -- 3. Atomic Lock & Validation
     SELECT * INTO v_ticket 
     FROM public.tickets
-    WHERE qr_code_hash = p_qr_hash
+    WHERE (qr_code_hash = p_qr_hash OR ticket_code = p_qr_hash)
     FOR UPDATE;
 
-    -- Case 1: Ticket not found
+    -- Ticket not found
     IF NOT FOUND THEN
         RETURN jsonb_build_object(
             'success', false,
@@ -361,7 +503,7 @@ BEGIN
         );
     END IF;
 
-    -- Case 2: Ticket belongs to a different event
+    -- Wrong event
     IF v_ticket.event_id <> p_event_id THEN
         INSERT INTO public.check_ins(ticket_id, event_id, scanned_by, status, notes)
         VALUES (v_ticket.id, p_event_id, p_scanned_by, 'WRONG_EVENT', 'Scanned at incorrect event');
@@ -373,7 +515,7 @@ BEGIN
         );
     END IF;
 
-    -- Case 3: Ticket is cancelled or refunded
+    -- Invalid status (Cancelled or Refunded)
     IF v_ticket.status <> 'VALID' THEN
         INSERT INTO public.check_ins(ticket_id, event_id, scanned_by, status, notes)
         VALUES (v_ticket.id, p_event_id, p_scanned_by, 'CANCELLED_TICKET', 'Ticket is ' || v_ticket.status::text);
@@ -381,11 +523,11 @@ BEGIN
         RETURN jsonb_build_object(
             'success', false,
             'status', 'CANCELLED_TICKET',
-            'message', 'Ticket status is invalid (' || v_ticket.status::text || ').'
+            'message', 'Ticket is ' || v_ticket.status::text || '.'
         );
     END IF;
 
-    -- Case 4: Ticket already checked in
+    -- Already checked in
     IF v_ticket.is_checked_in THEN
         INSERT INTO public.check_ins(ticket_id, event_id, scanned_by, status, notes)
         VALUES (v_ticket.id, p_event_id, p_scanned_by, 'ALREADY_CHECKED_IN', 'Duplicate scan attempt');
@@ -393,11 +535,12 @@ BEGIN
         RETURN jsonb_build_object(
             'success', false,
             'status', 'ALREADY_CHECKED_IN',
-            'message', 'Ticket was already checked in at ' || v_ticket.checked_in_at::text
+            'message', 'Ticket was already checked in at ' || v_ticket.checked_in_at::text,
+            'ticket_code', v_ticket.ticket_code
         );
     END IF;
 
-    -- Case 5: Valid check-in -> Atomic state update
+    -- 4. Valid check-in: Atomic update
     UPDATE public.tickets
     SET is_checked_in = TRUE,
         checked_in_at = NOW(),
@@ -405,14 +548,15 @@ BEGIN
         updated_at = NOW()
     WHERE id = v_ticket.id;
 
-    -- Log successful check-in
+    -- Record check-in log
     INSERT INTO public.check_ins(ticket_id, event_id, scanned_by, status, notes)
     VALUES (v_ticket.id, p_event_id, p_scanned_by, 'SUCCESS', 'Check-in successful');
 
-    -- Log audit action
-    INSERT INTO public.audit_logs(actor_id, action, entity_type, entity_id, metadata)
+    -- Record audit log
+    INSERT INTO public.audit_logs(actor_id, organization_id, action, entity_type, entity_id, metadata)
     VALUES (
         p_scanned_by, 
+        v_event_org_id,
         'CHECK_IN_PERFORMED', 
         'TICKET', 
         v_ticket.id, 
@@ -430,7 +574,7 @@ END;
 $$;
 
 -- ------------------------------------------------------------------------------
--- 5. AUTOMATIC PROFILE CREATION TRIGGER ON SUPABASE AUTH SIGNUP
+-- 8. AUTOMATIC AUTH TRIGGER (ISOLATED PROFILES)
 -- ------------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -452,54 +596,52 @@ BEGIN
     v_phone := NEW.raw_user_meta_data->>'phone_number';
 
     IF UPPER(v_account_type) IN ('ORGANIZER', 'ADMIN') THEN
+        -- 1. Insert into account_types
         INSERT INTO public.account_types (user_id, account_type)
-        VALUES (NEW.id, 'ORGANIZER'::account_type)
-        ON CONFLICT (user_id) DO NOTHING;
+        VALUES (NEW.id, 'ORGANIZER'::public.account_type)
+        ON CONFLICT (user_id) DO UPDATE SET
+            account_type = 'ORGANIZER'::public.account_type,
+            updated_at = NOW();
 
+        -- 2. Insert into organizer_profiles
         INSERT INTO public.organizer_profiles (id, full_name, email, phone_number)
         VALUES (NEW.id, v_full_name, NEW.email, v_phone)
         ON CONFLICT (id) DO UPDATE SET
             email = EXCLUDED.email,
             updated_at = NOW();
-
-        INSERT INTO public.profiles (id, full_name, email, phone_number, role, is_email_verified)
-        VALUES (NEW.id, v_full_name, NEW.email, v_phone, 'ORGANIZER', FALSE)
-        ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, role = 'ORGANIZER', updated_at = NOW();
     ELSE
+        -- 1. Insert into account_types
         INSERT INTO public.account_types (user_id, account_type)
-        VALUES (NEW.id, 'ATTENDEE'::account_type)
-        ON CONFLICT (user_id) DO NOTHING;
+        VALUES (NEW.id, 'ATTENDEE'::public.account_type)
+        ON CONFLICT (user_id) DO UPDATE SET
+            account_type = 'ATTENDEE'::public.account_type,
+            updated_at = NOW();
 
+        -- 2. Insert into attendee_profiles
         INSERT INTO public.attendee_profiles (id, full_name, email, phone_number, is_email_verified)
         VALUES (NEW.id, v_full_name, NEW.email, v_phone, FALSE)
         ON CONFLICT (id) DO UPDATE SET
             email = EXCLUDED.email,
             updated_at = NOW();
-
-        INSERT INTO public.profiles (id, full_name, email, phone_number, role, is_email_verified)
-        VALUES (NEW.id, v_full_name, NEW.email, v_phone, 'ATTENDEE', FALSE)
-        ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, role = 'ATTENDEE', updated_at = NOW();
     END IF;
 
     RETURN NEW;
 END;
 $$;
 
--- Trigger execution
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- ------------------------------------------------------------------------------
--- 6. ROW LEVEL SECURITY (RLS) POLICIES
+-- 9. STRICT ROW LEVEL SECURITY (RLS) POLICIES
 -- ------------------------------------------------------------------------------
 
 -- Enable RLS on all tables
 ALTER TABLE public.account_types ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendee_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.organizer_profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.organization_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
@@ -514,143 +656,276 @@ ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.refunds ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payout_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payouts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.event_staff_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.check_ins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
--- Account Types Policies
+-- 9.1 account_types
+DROP POLICY IF EXISTS "Account types viewable by authenticated users" ON public.account_types;
 CREATE POLICY "Account types viewable by authenticated users"
     ON public.account_types FOR SELECT USING (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Users can insert their own account type" ON public.account_types;
 CREATE POLICY "Users can insert their own account type"
     ON public.account_types FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own account type" ON public.account_types;
 CREATE POLICY "Users can update their own account type"
     ON public.account_types FOR UPDATE USING (auth.uid() = user_id);
 
--- Attendee Profiles Policies
+-- 9.2 attendee_profiles
+DROP POLICY IF EXISTS "Attendees can view their own profile" ON public.attendee_profiles;
 CREATE POLICY "Attendees can view their own profile"
     ON public.attendee_profiles FOR SELECT USING (auth.uid() = id OR auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Attendees can insert their own profile" ON public.attendee_profiles;
 CREATE POLICY "Attendees can insert their own profile"
     ON public.attendee_profiles FOR INSERT WITH CHECK (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Attendees can update their own profile" ON public.attendee_profiles;
 CREATE POLICY "Attendees can update their own profile"
     ON public.attendee_profiles FOR UPDATE USING (auth.uid() = id);
 
--- Organizer Profiles Policies
+-- 9.3 organizer_profiles
+DROP POLICY IF EXISTS "Organizer profiles viewable by authenticated users" ON public.organizer_profiles;
 CREATE POLICY "Organizer profiles viewable by authenticated users"
     ON public.organizer_profiles FOR SELECT USING (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Organizers can insert their own profile" ON public.organizer_profiles;
 CREATE POLICY "Organizers can insert their own profile"
     ON public.organizer_profiles FOR INSERT WITH CHECK (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Organizers can update their own profile" ON public.organizer_profiles;
 CREATE POLICY "Organizers can update their own profile"
     ON public.organizer_profiles FOR UPDATE USING (auth.uid() = id);
 
--- Profiles Policies
-CREATE POLICY "Public profiles are viewable by anyone or authenticated users"
-    ON public.profiles FOR SELECT USING (TRUE);
-
-CREATE POLICY "Users can insert their own profile"
-    ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
-
-CREATE POLICY "Users can update their own profile"
-    ON public.profiles FOR UPDATE USING (auth.uid() = id);
-
--- Organizations Policies
+-- 9.4 organizations
+DROP POLICY IF EXISTS "Organizations are viewable by anyone" ON public.organizations;
 CREATE POLICY "Organizations are viewable by anyone"
     ON public.organizations FOR SELECT USING (TRUE);
 
-CREATE POLICY "Authenticated users can create organizations"
-    ON public.organizations FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Organizers can create organizations" ON public.organizations;
+CREATE POLICY "Organizers can create organizations"
+    ON public.organizations FOR INSERT WITH CHECK (
+        auth.uid() = created_by AND EXISTS (
+            SELECT 1 FROM public.account_types
+            WHERE user_id = auth.uid() AND account_type IN ('ORGANIZER', 'ADMIN')
+        )
+    );
 
+DROP POLICY IF EXISTS "Organizers can update their own organizations" ON public.organizations;
 CREATE POLICY "Organizers can update their own organizations"
-    ON public.organizations FOR UPDATE USING (created_by = auth.uid());
+    ON public.organizations FOR UPDATE USING (
+        created_by = auth.uid() OR EXISTS (
+            SELECT 1 FROM public.organization_members om
+            WHERE om.organization_id = organizations.id
+            AND om.user_id = auth.uid()
+            AND om.role IN ('OWNER', 'ADMIN')
+        )
+    );
 
--- Venues Policies
-CREATE POLICY "Venues are viewable by anyone"
+-- 9.5 organization_members
+DROP POLICY IF EXISTS "Organization members are viewable by org team" ON public.organization_members;
+CREATE POLICY "Organization members are viewable by org team"
+    ON public.organization_members FOR SELECT USING (
+        user_id = auth.uid() OR EXISTS (
+            SELECT 1 FROM public.organization_members om
+            WHERE om.organization_id = organization_members.organization_id
+            AND om.user_id = auth.uid()
+        ) OR EXISTS (
+            SELECT 1 FROM public.organizations o
+            WHERE o.id = organization_members.organization_id
+            AND o.created_by = auth.uid()
+        )
+    );
+
+DROP POLICY IF EXISTS "Owners and Admins can manage members" ON public.organization_members;
+CREATE POLICY "Owners and Admins can manage members"
+    ON public.organization_members FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM public.organization_members om
+            WHERE om.organization_id = organization_members.organization_id
+            AND om.user_id = auth.uid()
+            AND om.role IN ('OWNER', 'ADMIN')
+        ) OR EXISTS (
+            SELECT 1 FROM public.organizations o
+            WHERE o.id = organization_members.organization_id
+            AND o.created_by = auth.uid()
+        )
+    );
+
+-- 9.6 event_categories & venues
+DROP POLICY IF EXISTS "Event categories viewable by everyone" ON public.event_categories;
+CREATE POLICY "Event categories viewable by everyone"
+    ON public.event_categories FOR SELECT USING (TRUE);
+
+DROP POLICY IF EXISTS "Venues viewable by everyone" ON public.venues;
+CREATE POLICY "Venues viewable by everyone"
     ON public.venues FOR SELECT USING (TRUE);
 
-CREATE POLICY "Authenticated users can create venues"
+DROP POLICY IF EXISTS "Organizers can create venues" ON public.venues;
+CREATE POLICY "Organizers can create venues"
     ON public.venues FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
--- Events Policies
+-- 9.7 events
+DROP POLICY IF EXISTS "Published events are publicly readable" ON public.events;
 CREATE POLICY "Published events are publicly readable"
-    ON public.events FOR SELECT USING (TRUE);
-
-CREATE POLICY "Authenticated users can create events"
-    ON public.events FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-
-CREATE POLICY "Organizers can manage events in their organizations"
-    ON public.events FOR ALL USING (
-        EXISTS (
+    ON public.events FOR SELECT USING (
+        status = 'PUBLISHED' OR EXISTS (
             SELECT 1 FROM public.organization_members om
             WHERE om.organization_id = events.organization_id
             AND om.user_id = auth.uid()
         ) OR created_by = auth.uid()
     );
 
--- Ticket Types Policies
-CREATE POLICY "Ticket types are viewable by anyone for published events"
+DROP POLICY IF EXISTS "Organizers can insert events for their organizations" ON public.events;
+CREATE POLICY "Organizers can insert events for their organizations"
+    ON public.events FOR INSERT WITH CHECK (
+        auth.role() = 'authenticated' AND (
+            EXISTS (
+                SELECT 1 FROM public.organization_members om
+                WHERE om.organization_id = events.organization_id
+                AND om.user_id = auth.uid()
+                AND om.role IN ('OWNER', 'ADMIN', 'MANAGER')
+            ) OR EXISTS (
+                SELECT 1 FROM public.organizations o
+                WHERE o.id = events.organization_id
+                AND o.created_by = auth.uid()
+            )
+        )
+    );
+
+DROP POLICY IF EXISTS "Organizers can update their organization events" ON public.events;
+CREATE POLICY "Organizers can update their organization events"
+    ON public.events FOR UPDATE USING (
+        created_by = auth.uid() OR EXISTS (
+            SELECT 1 FROM public.organization_members om
+            WHERE om.organization_id = events.organization_id
+            AND om.user_id = auth.uid()
+            AND om.role IN ('OWNER', 'ADMIN', 'MANAGER')
+        )
+    );
+
+DROP POLICY IF EXISTS "Organizers can delete their organization events" ON public.events;
+CREATE POLICY "Organizers can delete their organization events"
+    ON public.events FOR DELETE USING (
+        created_by = auth.uid() OR EXISTS (
+            SELECT 1 FROM public.organization_members om
+            WHERE om.organization_id = events.organization_id
+            AND om.user_id = auth.uid()
+            AND om.role IN ('OWNER', 'ADMIN')
+        )
+    );
+
+-- 9.8 ticket_types
+DROP POLICY IF EXISTS "Ticket types viewable by everyone" ON public.ticket_types;
+CREATE POLICY "Ticket types viewable by everyone"
     ON public.ticket_types FOR SELECT USING (TRUE);
 
-CREATE POLICY "Authenticated users can create ticket types"
-    ON public.ticket_types FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Organizers can manage ticket types" ON public.ticket_types;
+CREATE POLICY "Organizers can manage ticket types"
+    ON public.ticket_types FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM public.events e
+            JOIN public.organization_members om ON om.organization_id = e.organization_id
+            WHERE e.id = ticket_types.event_id
+            AND om.user_id = auth.uid()
+            AND om.role IN ('OWNER', 'ADMIN', 'MANAGER')
+        ) OR EXISTS (
+            SELECT 1 FROM public.events e
+            WHERE e.id = ticket_types.event_id
+            AND e.created_by = auth.uid()
+        )
+    );
 
--- Orders Policies
+-- 9.9 event_staff_assignments
+DROP POLICY IF EXISTS "Staff assignments viewable by org & staff" ON public.event_staff_assignments;
+CREATE POLICY "Staff assignments viewable by org & staff"
+    ON public.event_staff_assignments FOR SELECT USING (
+        staff_user_id = auth.uid() OR EXISTS (
+            SELECT 1 FROM public.events e
+            JOIN public.organization_members om ON om.organization_id = e.organization_id
+            WHERE e.id = event_staff_assignments.event_id
+            AND om.user_id = auth.uid()
+        )
+    );
+
+DROP POLICY IF EXISTS "Organizers can manage staff assignments" ON public.event_staff_assignments;
+CREATE POLICY "Organizers can manage staff assignments"
+    ON public.event_staff_assignments FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM public.events e
+            JOIN public.organization_members om ON om.organization_id = e.organization_id
+            WHERE e.id = event_staff_assignments.event_id
+            AND om.user_id = auth.uid()
+            AND om.role IN ('OWNER', 'ADMIN', 'MANAGER')
+        )
+    );
+
+-- 9.10 orders & order_items
+DROP POLICY IF EXISTS "Attendees can view their own orders" ON public.orders;
 CREATE POLICY "Attendees can view their own orders"
     ON public.orders FOR SELECT USING (user_id = auth.uid());
 
-CREATE POLICY "Attendees can insert their own orders"
-    ON public.orders FOR INSERT WITH CHECK (user_id = auth.uid());
-
-CREATE POLICY "Attendees can update their own orders"
-    ON public.orders FOR UPDATE USING (user_id = auth.uid());
-
+DROP POLICY IF EXISTS "Organizers can view orders for their events" ON public.orders;
 CREATE POLICY "Organizers can view orders for their events"
     ON public.orders FOR SELECT USING (
         EXISTS (
             SELECT 1 FROM public.events e
             JOIN public.organization_members om ON om.organization_id = e.organization_id
             WHERE e.id = orders.event_id AND om.user_id = auth.uid()
+        ) OR EXISTS (
+            SELECT 1 FROM public.events e
+            WHERE e.id = orders.event_id AND e.created_by = auth.uid()
         )
     );
 
--- Order Items Policies
-CREATE POLICY "Order items are viewable by order owner"
+DROP POLICY IF EXISTS "Attendees can create orders" ON public.orders;
+CREATE POLICY "Attendees can create orders"
+    ON public.orders FOR INSERT WITH CHECK (user_id = auth.uid() OR auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Attendees can update their own orders" ON public.orders;
+CREATE POLICY "Attendees can update their own orders"
+    ON public.orders FOR UPDATE USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Order items viewable by order owner or organizer" ON public.order_items;
+CREATE POLICY "Order items viewable by order owner or organizer"
     ON public.order_items FOR SELECT USING (TRUE);
 
-CREATE POLICY "Order items can be inserted by authenticated users"
+DROP POLICY IF EXISTS "Order items can be inserted with order" ON public.order_items;
+CREATE POLICY "Order items can be inserted with order"
     ON public.order_items FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
--- Payments Policies
-CREATE POLICY "Payments viewable by order owner"
+-- 9.11 payments
+DROP POLICY IF EXISTS "Payments viewable by order owner or organizer" ON public.payments;
+CREATE POLICY "Payments viewable by order owner or organizer"
     ON public.payments FOR SELECT USING (TRUE);
 
-CREATE POLICY "Payments can be inserted by authenticated users"
+DROP POLICY IF EXISTS "Payments insertable on checkout" ON public.payments;
+CREATE POLICY "Payments insertable on checkout"
     ON public.payments FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
--- Tickets Policies
+-- 9.12 tickets & ticket_holders
+DROP POLICY IF EXISTS "Attendees can view their own tickets" ON public.tickets;
 CREATE POLICY "Attendees can view their own tickets"
     ON public.tickets FOR SELECT USING (user_id = auth.uid());
 
-CREATE POLICY "Attendees can insert their own tickets"
-    ON public.tickets FOR INSERT WITH CHECK (user_id = auth.uid());
-
-CREATE POLICY "Attendees can update their own tickets"
-    ON public.tickets FOR UPDATE USING (user_id = auth.uid());
-
+DROP POLICY IF EXISTS "Organizers can view tickets for their events" ON public.tickets;
 CREATE POLICY "Organizers can view tickets for their events"
     ON public.tickets FOR SELECT USING (
         EXISTS (
             SELECT 1 FROM public.events e
             JOIN public.organization_members om ON om.organization_id = e.organization_id
             WHERE e.id = tickets.event_id AND om.user_id = auth.uid()
+        ) OR EXISTS (
+            SELECT 1 FROM public.events e
+            WHERE e.id = tickets.event_id AND e.created_by = auth.uid()
         )
     );
 
-CREATE POLICY "Assigned staff can view & verify tickets for their assigned events"
+DROP POLICY IF EXISTS "Assigned staff can view tickets for their events" ON public.tickets;
+CREATE POLICY "Assigned staff can view tickets for their events"
     ON public.tickets FOR SELECT USING (
         EXISTS (
             SELECT 1 FROM public.event_staff_assignments esa
@@ -658,66 +933,116 @@ CREATE POLICY "Assigned staff can view & verify tickets for their assigned event
         )
     );
 
--- Organization Members Policies
-CREATE POLICY "Organization members are viewable by authenticated users"
-    ON public.organization_members FOR SELECT USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Attendees can insert tickets on order completion" ON public.tickets;
+CREATE POLICY "Attendees can insert tickets on order completion"
+    ON public.tickets FOR INSERT WITH CHECK (user_id = auth.uid() OR auth.role() = 'authenticated');
 
-CREATE POLICY "Authenticated users can create organization member records"
-    ON public.organization_members FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Ticket holders viewable by ticket owner or organizer" ON public.ticket_holders;
+CREATE POLICY "Ticket holders viewable by ticket owner or organizer"
+    ON public.ticket_holders FOR SELECT USING (TRUE);
 
-CREATE POLICY "Organization members can be managed by authenticated users"
-    ON public.organization_members FOR ALL USING (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Ticket holders insertable on ticket generation" ON public.ticket_holders;
+CREATE POLICY "Ticket holders insertable on ticket generation"
+    ON public.ticket_holders FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
--- Payout Accounts Policies
-CREATE POLICY "Payout accounts are viewable by authenticated users"
-    ON public.payout_accounts FOR SELECT USING (auth.role() = 'authenticated');
-
-CREATE POLICY "Payout accounts can be created by authenticated users"
-    ON public.payout_accounts FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-
-CREATE POLICY "Payout accounts can be updated by authenticated users"
-    ON public.payout_accounts FOR UPDATE USING (auth.role() = 'authenticated');
-
--- Payouts Policies
-CREATE POLICY "Payouts are viewable by authenticated users"
-    ON public.payouts FOR SELECT USING (auth.role() = 'authenticated');
-
-CREATE POLICY "Payouts can be requested by authenticated users"
-    ON public.payouts FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-
--- Event Staff Assignments Policies
-CREATE POLICY "Staff assignments are viewable by authenticated users"
-    ON public.event_staff_assignments FOR SELECT USING (auth.role() = 'authenticated');
-
-CREATE POLICY "Staff assignments can be created by authenticated users"
-    ON public.event_staff_assignments FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-
-CREATE POLICY "Staff assignments can be removed by authenticated users"
-    ON public.event_staff_assignments FOR DELETE USING (auth.role() = 'authenticated');
-
--- Audit Logs Policies
-CREATE POLICY "Audit logs are viewable by authenticated users"
-    ON public.audit_logs FOR SELECT USING (auth.role() = 'authenticated');
-
-CREATE POLICY "Audit logs can be created by authenticated users"
-    ON public.audit_logs FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-
--- Check-ins Policies
-CREATE POLICY "Staff & Organizers can insert check-ins"
-    ON public.check_ins FOR INSERT WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM public.event_staff_assignments esa
-            WHERE esa.event_id = check_ins.event_id AND esa.staff_user_id = auth.uid()
-        ) OR EXISTS (
+-- 9.13 check_ins
+DROP POLICY IF EXISTS "Check-ins viewable by event organizers and staff" ON public.check_ins;
+CREATE POLICY "Check-ins viewable by event organizers and staff"
+    ON public.check_ins FOR SELECT USING (
+        scanned_by = auth.uid() OR EXISTS (
             SELECT 1 FROM public.events e
             JOIN public.organization_members om ON om.organization_id = e.organization_id
             WHERE e.id = check_ins.event_id AND om.user_id = auth.uid()
-        ) OR auth.role() = 'authenticated'
+        ) OR EXISTS (
+            SELECT 1 FROM public.event_staff_assignments esa
+            WHERE esa.event_id = check_ins.event_id AND esa.staff_user_id = auth.uid()
+        )
     );
 
-CREATE POLICY "Check-ins are viewable by authenticated users"
-    ON public.check_ins FOR SELECT USING (auth.role() = 'authenticated');
+-- 9.14 payout_accounts & payouts
+DROP POLICY IF EXISTS "Payout accounts viewable by org owners & admins" ON public.payout_accounts;
+CREATE POLICY "Payout accounts viewable by org owners & admins"
+    ON public.payout_accounts FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM public.organization_members om
+            WHERE om.organization_id = payout_accounts.organization_id
+            AND om.user_id = auth.uid()
+            AND om.role IN ('OWNER', 'ADMIN')
+        ) OR EXISTS (
+            SELECT 1 FROM public.organizations o
+            WHERE o.id = payout_accounts.organization_id
+            AND o.created_by = auth.uid()
+        )
+    );
 
--- Notifications Policies
-CREATE POLICY "Users can read their own notifications"
+DROP POLICY IF EXISTS "Owners & admins can manage payout accounts" ON public.payout_accounts;
+CREATE POLICY "Owners & admins can manage payout accounts"
+    ON public.payout_accounts FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM public.organization_members om
+            WHERE om.organization_id = payout_accounts.organization_id
+            AND om.user_id = auth.uid()
+            AND om.role IN ('OWNER', 'ADMIN')
+        ) OR EXISTS (
+            SELECT 1 FROM public.organizations o
+            WHERE o.id = payout_accounts.organization_id
+            AND o.created_by = auth.uid()
+        )
+    );
+
+DROP POLICY IF EXISTS "Payouts viewable by org owners & admins" ON public.payouts;
+CREATE POLICY "Payouts viewable by org owners & admins"
+    ON public.payouts FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM public.organization_members om
+            WHERE om.organization_id = payouts.organization_id
+            AND om.user_id = auth.uid()
+            AND om.role IN ('OWNER', 'ADMIN')
+        ) OR EXISTS (
+            SELECT 1 FROM public.organizations o
+            WHERE o.id = payouts.organization_id
+            AND o.created_by = auth.uid()
+        )
+    );
+
+DROP POLICY IF EXISTS "Owners & admins can request payouts" ON public.payouts;
+CREATE POLICY "Owners & admins can request payouts"
+    ON public.payouts FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM public.organization_members om
+            WHERE om.organization_id = payouts.organization_id
+            AND om.user_id = auth.uid()
+            AND om.role IN ('OWNER', 'ADMIN')
+        ) OR EXISTS (
+            SELECT 1 FROM public.organizations o
+            WHERE o.id = payouts.organization_id
+            AND o.created_by = auth.uid()
+        )
+    );
+
+-- 9.15 notifications & audit_logs
+DROP POLICY IF EXISTS "Users can view their notifications" ON public.notifications;
+CREATE POLICY "Users can view their notifications"
     ON public.notifications FOR SELECT USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Users can update their notifications" ON public.notifications;
+CREATE POLICY "Users can update their notifications"
+    ON public.notifications FOR UPDATE USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Audit logs viewable by organization team" ON public.audit_logs;
+CREATE POLICY "Audit logs viewable by organization team"
+    ON public.audit_logs FOR SELECT USING (
+        actor_id = auth.uid() OR (
+            organization_id IS NOT NULL AND EXISTS (
+                SELECT 1 FROM public.organization_members om
+                WHERE om.organization_id = audit_logs.organization_id
+                AND om.user_id = auth.uid()
+                AND om.role IN ('OWNER', 'ADMIN', 'MANAGER')
+            )
+        )
+    );
+
+-- ------------------------------------------------------------------------------
+-- 10. NOTIFY POSTGREST TO RELOAD SCHEMA CACHE
+-- ------------------------------------------------------------------------------
+NOTIFY pgrst, 'reload schema';
