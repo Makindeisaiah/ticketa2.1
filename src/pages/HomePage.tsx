@@ -1,24 +1,42 @@
 import React, { useState } from 'react';
-import { Search, MapPin, Calendar, ShieldCheck, UserCheck, RefreshCw, Zap, ArrowRight, Music, Cpu, Smile, Flame } from 'lucide-react';
+import {
+  Search,
+  MapPin,
+  Calendar,
+  ShieldCheck,
+  UserCheck,
+  RefreshCw,
+  Zap,
+  ArrowRight,
+  Music,
+  Cpu,
+  Smile,
+  Flame,
+  PlusCircle,
+} from 'lucide-react';
 import { SeedEventData } from '../data/seedEvents';
 import { EventCard } from '../components/EventCard';
 
 interface HomePageProps {
   events: SeedEventData[];
   onSelectEvent: (event: SeedEventData) => void;
-  onNavigateToBrowse: (params?: { category?: string; searchQuery?: string }) => void;
+  onNavigateToBrowse: (params?: { category?: string; searchQuery?: string; location?: string; dateFilter?: string }) => void;
 }
 
 export const HomePage: React.FC<HomePageProps> = ({ events, onSelectEvent, onNavigateToBrowse }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [location, setLocation] = useState('');
-  const [date, setDate] = useState('');
+  const [location, setLocation] = useState('all');
+  const [dateFilter, setDateFilter] = useState('all');
 
   const trendingEvents = events.filter((e) => e.is_trending || e.is_featured).slice(0, 8);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onNavigateToBrowse({ searchQuery });
+    onNavigateToBrowse({
+      searchQuery: searchQuery.trim(),
+      location: location === 'all' ? undefined : location,
+      dateFilter: dateFilter === 'all' ? undefined : dateFilter,
+    });
   };
 
   const categories = [
@@ -70,16 +88,16 @@ export const HomePage: React.FC<HomePageProps> = ({ events, onSelectEvent, onNav
             <span className="text-[#00b894]">Buy Tickets Easily</span>
           </h1>
           <p className="text-slate-300 text-sm sm:text-lg max-w-2xl mx-auto font-normal">
-            Concert, tech events, comedy shows and more all in one place
+            Concerts, tech summits, comedy shows and festivals all in one place
           </p>
 
-          {/* Search Bar Widget matching Figma */}
+          {/* Search Bar Widget with Dropdowns */}
           <form
             onSubmit={handleSearchSubmit}
             className="bg-white/95 backdrop-blur-md rounded-2xl p-2.5 sm:p-3 shadow-2xl border border-white/20 max-w-3xl mx-auto grid grid-cols-1 sm:grid-cols-12 gap-2 text-slate-800 text-left"
           >
             {/* Event Name / Artist */}
-            <div className="sm:col-span-5 flex items-center px-3 py-2 bg-slate-50/80 rounded-xl border border-slate-200/60 focus-within:ring-2 focus-within:ring-[#00b894]">
+            <div className="sm:col-span-5 flex items-center px-3 py-2 bg-slate-50/90 rounded-xl border border-slate-200 focus-within:ring-2 focus-within:ring-[#00b894]">
               <Search className="w-4 h-4 text-slate-400 mr-2 flex-shrink-0" />
               <input
                 type="text"
@@ -90,28 +108,39 @@ export const HomePage: React.FC<HomePageProps> = ({ events, onSelectEvent, onNav
               />
             </div>
 
-            {/* Location */}
-            <div className="sm:col-span-3 flex items-center px-3 py-2 bg-slate-50/80 rounded-xl border border-slate-200/60 focus-within:ring-2 focus-within:ring-[#00b894]">
-              <MapPin className="w-4 h-4 text-slate-400 mr-2 flex-shrink-0" />
-              <input
-                type="text"
-                placeholder="Location"
+            {/* Location Dropdown */}
+            <div className="sm:col-span-3 flex items-center px-2 py-2 bg-slate-50/90 rounded-xl border border-slate-200 focus-within:ring-2 focus-within:ring-[#00b894]">
+              <MapPin className="w-4 h-4 text-slate-400 mr-1.5 flex-shrink-0" />
+              <select
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                className="w-full text-xs sm:text-sm bg-transparent outline-none text-slate-900 placeholder-slate-400 font-medium"
-              />
+                className="w-full text-xs sm:text-sm bg-transparent outline-none text-slate-800 font-medium cursor-pointer"
+              >
+                <option value="all">All Locations</option>
+                <option value="Lagos, Nigeria">Lagos, Nigeria</option>
+                <option value="Abuja, Nigeria">Abuja, Nigeria</option>
+                <option value="Accra, Ghana">Accra, Ghana</option>
+                <option value="Abidjan, Côte d’Ivoire">Abidjan, Côte d’Ivoire</option>
+                <option value="Nairobi, Kenya">Nairobi, Kenya</option>
+                <option value="London, United Kingdom">London, United Kingdom</option>
+              </select>
             </div>
 
-            {/* Date */}
-            <div className="sm:col-span-2 flex items-center px-3 py-2 bg-slate-50/80 rounded-xl border border-slate-200/60 focus-within:ring-2 focus-within:ring-[#00b894]">
-              <Calendar className="w-4 h-4 text-slate-400 mr-2 flex-shrink-0" />
-              <input
-                type="text"
-                placeholder="Date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full text-xs sm:text-sm bg-transparent outline-none text-slate-900 placeholder-slate-400 font-medium"
-              />
+            {/* Date Dropdown */}
+            <div className="sm:col-span-2 flex items-center px-2 py-2 bg-slate-50/90 rounded-xl border border-slate-200 focus-within:ring-2 focus-within:ring-[#00b894]">
+              <Calendar className="w-4 h-4 text-slate-400 mr-1.5 flex-shrink-0" />
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="w-full text-xs sm:text-sm bg-transparent outline-none text-slate-800 font-medium cursor-pointer"
+              >
+                <option value="all">Any Date</option>
+                <option value="today">Today</option>
+                <option value="this-weekend">This Weekend</option>
+                <option value="this-week">This Week</option>
+                <option value="this-month">This Month</option>
+                <option value="next-month">Next Month</option>
+              </select>
             </div>
 
             {/* Search Button */}
@@ -176,24 +205,42 @@ export const HomePage: React.FC<HomePageProps> = ({ events, onSelectEvent, onNav
           </button>
         </div>
 
-        {trendingEvents.length > 0 ? (
+        {events.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-            {trendingEvents.map((evt) => (
+            {(trendingEvents.length > 0 ? trendingEvents : events.slice(0, 8)).map((evt) => (
               <EventCard key={evt.id} event={evt} onClick={onSelectEvent} />
             ))}
           </div>
         ) : (
-          <div className="text-center py-14 px-4 bg-slate-50 border border-slate-200/80 rounded-2xl">
-            <Calendar className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-            <h3 className="text-sm font-bold text-slate-700 mb-1">No upcoming events yet</h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              There are currently no active public events. Stay tuned or check back later!
-            </p>
+          /* Exact No Published Events Available State */
+          <div className="bg-slate-50 border border-slate-200/90 rounded-3xl p-10 sm:p-14 text-center space-y-4 max-w-2xl mx-auto shadow-xs">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-100/70 text-[#00b894] flex items-center justify-center mx-auto">
+              <Calendar className="w-7 h-7" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg sm:text-xl font-bold text-slate-900">
+                No Published Events Available
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 leading-relaxed max-w-lg mx-auto">
+                There are currently no active events in the attendee catalog. Switch to your Organizer account to publish a new event — it will automatically reflect here for attendees to start purchasing tickets!
+              </p>
+            </div>
+            <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+              <button
+                onClick={() => {
+                  window.location.href = '/organizer';
+                }}
+                className="bg-[#00b894] hover:bg-[#00a383] text-white font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl shadow-xs transition-all cursor-pointer flex items-center space-x-2"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>Switch to Organizer Portal</span>
+              </button>
+            </div>
           </div>
         )}
       </section>
 
-      {/* Trust Badges matching Figma */}
+      {/* Trust Badges */}
       <section className="bg-slate-50 border-y border-slate-200/80 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto space-y-8">
           <h2 className="text-xl sm:text-2xl font-bold text-slate-900 text-center tracking-tight">
@@ -208,7 +255,7 @@ export const HomePage: React.FC<HomePageProps> = ({ events, onSelectEvent, onNav
               <div>
                 <h3 className="font-bold text-slate-900 text-sm">Secure Payments</h3>
                 <p className="text-xs text-slate-500 leading-relaxed mt-1">
-                  Safe and encrypted transactions.
+                  Safe and encrypted transactions with Paystack.
                 </p>
               </div>
             </div>
@@ -220,7 +267,7 @@ export const HomePage: React.FC<HomePageProps> = ({ events, onSelectEvent, onNav
               <div>
                 <h3 className="font-bold text-slate-900 text-sm">Verified Organizers</h3>
                 <p className="text-xs text-slate-500 leading-relaxed mt-1">
-                  Only trusted event organizers.
+                  Only verified event organizers with verified bank accounts.
                 </p>
               </div>
             </div>
@@ -232,7 +279,7 @@ export const HomePage: React.FC<HomePageProps> = ({ events, onSelectEvent, onNav
               <div>
                 <h3 className="font-bold text-slate-900 text-sm">Easy Refunds</h3>
                 <p className="text-xs text-slate-500 leading-relaxed mt-1">
-                  Simple, stress-free refunds.
+                  Transparent event cancellation policies and claims.
                 </p>
               </div>
             </div>
@@ -244,7 +291,7 @@ export const HomePage: React.FC<HomePageProps> = ({ events, onSelectEvent, onNav
               <div>
                 <h3 className="font-bold text-slate-900 text-sm">Fast Payouts</h3>
                 <p className="text-xs text-slate-500 leading-relaxed mt-1">
-                  Get paid quickly and securely.
+                  Direct organizer settlement to commercial banks.
                 </p>
               </div>
             </div>

@@ -65,6 +65,24 @@ export const Header: React.FC<HeaderProps> = ({ currentView, onNavigate, myTicke
             >
               Browse Events
             </button>
+
+            <button
+              onClick={() => onNavigate('about')}
+              className={`text-sm font-medium transition-colors cursor-pointer ${
+                currentView === 'about' ? 'text-[#00b894] font-semibold' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              About
+            </button>
+
+            <button
+              onClick={() => onNavigate('how-it-works')}
+              className={`text-sm font-medium transition-colors cursor-pointer ${
+                currentView === 'how-it-works' ? 'text-[#00b894] font-semibold' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              How It Works
+            </button>
             
             <button
               onClick={() => onNavigate('my-tickets')}
@@ -78,14 +96,6 @@ export const Header: React.FC<HeaderProps> = ({ currentView, onNavigate, myTicke
                   {myTicketsCount}
                 </span>
               )}
-            </button>
-
-            <button
-              onClick={() => onNavigate('architecture')}
-              className="hidden lg:flex items-center space-x-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer font-medium"
-            >
-              <Layers className="w-3.5 h-3.5 text-slate-400" />
-              <span>Specs &amp; RLS</span>
             </button>
           </nav>
 
@@ -185,14 +195,36 @@ export const Header: React.FC<HeaderProps> = ({ currentView, onNavigate, myTicke
         <div className="md:hidden bg-white border-b border-slate-200 px-4 py-4 space-y-3">
           <button
             onClick={() => { setIsMobileMenuOpen(false); onNavigate('browse'); }}
-            className="w-full text-left px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50 rounded-xl"
+            className={`w-full text-left px-3 py-2 text-sm font-bold rounded-xl ${
+              currentView === 'browse' ? 'text-[#00b894] bg-emerald-50' : 'text-slate-800 hover:bg-slate-50'
+            }`}
           >
             Browse Events
           </button>
 
           <button
+            onClick={() => { setIsMobileMenuOpen(false); onNavigate('about'); }}
+            className={`w-full text-left px-3 py-2 text-sm font-bold rounded-xl ${
+              currentView === 'about' ? 'text-[#00b894] bg-emerald-50' : 'text-slate-800 hover:bg-slate-50'
+            }`}
+          >
+            About
+          </button>
+
+          <button
+            onClick={() => { setIsMobileMenuOpen(false); onNavigate('how-it-works'); }}
+            className={`w-full text-left px-3 py-2 text-sm font-bold rounded-xl ${
+              currentView === 'how-it-works' ? 'text-[#00b894] bg-emerald-50' : 'text-slate-800 hover:bg-slate-50'
+            }`}
+          >
+            How It Works
+          </button>
+
+          <button
             onClick={() => { setIsMobileMenuOpen(false); onNavigate('my-tickets'); }}
-            className="w-full text-left px-3 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50 rounded-xl flex items-center justify-between"
+            className={`w-full text-left px-3 py-2 text-sm font-bold rounded-xl flex items-center justify-between ${
+              currentView === 'my-tickets' ? 'text-[#00b894] bg-emerald-50' : 'text-slate-800 hover:bg-slate-50'
+            }`}
           >
             <span>My Tickets</span>
             {myTicketsCount > 0 && (
@@ -200,14 +232,6 @@ export const Header: React.FC<HeaderProps> = ({ currentView, onNavigate, myTicke
                 {myTicketsCount}
               </span>
             )}
-          </button>
-
-          <button
-            onClick={() => { setIsMobileMenuOpen(false); onNavigate('architecture'); }}
-            className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl flex items-center space-x-2"
-          >
-            <Layers className="w-4 h-4 text-[#00b894]" />
-            <span>Technical Specs &amp; RLS</span>
           </button>
 
           <div className="border-t border-slate-100 pt-3">

@@ -1,11 +1,11 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { INITIAL_SEED_EVENTS, SeedEventData } from '../data/seedEvents';
+import { SeedEventData } from '../data/seedEvents';
 
 export interface EventFilterOptions {
   searchQuery?: string;
   category?: string;
   location?: string;
-  dateFilter?: 'all' | 'today' | 'this-week' | 'this-month' | 'upcoming';
+  dateFilter?: 'all' | 'today' | 'this-weekend' | 'this-week' | 'this-month' | 'next-month' | 'upcoming';
   priceFilter?: 'all' | 'free' | 'paid' | 'under-50k' | 'over-50k';
   sortBy?: 'trending' | 'date-asc' | 'date-desc' | 'price-asc' | 'price-desc';
 }
@@ -54,7 +54,8 @@ export async function getAllEvents(filters: EventFilterOptions = {}): Promise<Se
             quantity_sold
           )
         `)
-        .eq('status', 'PUBLISHED');
+        .eq('status', 'PUBLISHED')
+        .order('start_time', { ascending: true });
 
       if (!error && data && data.length > 0) {
         eventsList = data.map((item: any) => ({
@@ -91,12 +92,13 @@ export async function getAllEvents(filters: EventFilterOptions = {}): Promise<Se
         }));
       }
     } catch (e) {
-      console.warn('Failed to fetch from Supabase, falling back to seed dataset:', e);
+      console.warn('Failed to fetch from Supabase:', e);
     }
   }
 
-  if (eventsList.length === 0) {
-    eventsList = [];
+  // Real data only: if database is empty, eventsList is []
+  if (!eventsList || eventsList.length === 0) {
+    return [];
   }
 
   // Apply filters in memory
@@ -118,9 +120,57 @@ export async function getAllEvents(filters: EventFilterOptions = {}): Promise<Se
     filtered = filtered.filter((e) => e.category_slug.toLowerCase() === cat || e.category.toLowerCase() === cat);
   }
 
-  if (filters.location && filters.location !== 'all') {
+  if (filters.location && filters.location !== 'all' && filters.location.trim() !== '') {
     const loc = filters.location.toLowerCase();
-    filtered = filtered.filter((e) => e.venue_city.toLowerCase().includes(loc) || e.venue_country.toLowerCase().includes(loc));
+    filtered = filtered.filter((e) => {
+      const city = (e.venue_city || '').toLowerCase();
+      const country = (e.venue_country || '').toLowerCase();
+      const venue = (e.venue_name || '').toLowerCase();
+      return city.includes(loc) || country.includes(loc) || venue.includes(loc) || loc.includes(city) || loc.includes(country);
+    });
+  }
+
+  if (filters.dateFilter && filters.dateFilter !== 'all') {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+    if (filters.dateFilter === 'today') {
+      filtered = filtered.filter((e) => {
+        const d = new Date(e.start_time);
+        return d >= startOfToday && d <= endOfToday;
+      });
+    } else if (filters.dateFilter === 'this-weekend') {
+      const dayOfWeek = now.getDay();
+      const distToFriday = (5 - dayOfWeek + 7) % 7;
+      const fridayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + distToFriday, 0, 0, 0);
+      const sundayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + distToFriday + 2, 23, 59, 59);
+      filtered = filtered.filter((e) => {
+        const d = new Date(e.start_time);
+        return d >= fridayStart && d <= sundayEnd;
+      });
+    } else if (filters.dateFilter === 'this-week') {
+      const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+      const endOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (6 - now.getDay()), 23, 59, 59);
+      filtered = filtered.filter((e) => {
+        const d = new Date(e.start_time);
+        return d >= startOfWeek && d <= endOfWeek;
+      });
+    } else if (filters.dateFilter === 'this-month') {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      filtered = filtered.filter((e) => {
+        const d = new Date(e.start_time);
+        return d >= startOfMonth && d <= endOfMonth;
+      });
+    } else if (filters.dateFilter === 'next-month') {
+      const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const endOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0, 23, 59, 59);
+      filtered = filtered.filter((e) => {
+        const d = new Date(e.start_time);
+        return d >= startOfNextMonth && d <= endOfNextMonth;
+      });
+    }
   }
 
   if (filters.priceFilter && filters.priceFilter !== 'all') {

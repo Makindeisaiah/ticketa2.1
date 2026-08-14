@@ -11,6 +11,8 @@ import { SignInPage } from './pages/SignInPage';
 import { SignUpPage } from './pages/SignUpPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { AboutPage } from './pages/AboutPage';
+import { HowItWorksPage } from './pages/HowItWorksPage';
 import { OrganizerApp } from './organizer/OrganizerApp';
 import { PaymentProcessingModal } from './components/PaymentProcessingModal';
 import { TicketWalletModal } from './components/TicketWalletModal';
@@ -30,6 +32,8 @@ import {
 type AppView = 
   | 'home' 
   | 'browse' 
+  | 'about'
+  | 'how-it-works'
   | 'detail' 
   | 'checkout' 
   | 'my-tickets' 
@@ -49,8 +53,11 @@ function MainAppContent() {
     if (path === '/forgot-password') return 'forgot-password';
     if (path === '/tickets' || path === '/my-tickets') return 'my-tickets';
     if (path === '/profile') return 'profile';
+    if (path === '/about') return 'about';
+    if (path === '/how-it-works') return 'how-it-works';
     if (path === '/events') return 'browse';
     if (path === '/checkout') return 'checkout';
+    if (path === '/architecture') return 'architecture';
     return 'home';
   };
 
@@ -78,6 +85,8 @@ function MainAppContent() {
   // Browse filters pass-through
   const [browseCategory, setBrowseCategory] = useState<string>('all');
   const [browseSearchQuery, setBrowseSearchQuery] = useState<string>('');
+  const [browseLocation, setBrowseLocation] = useState<string>('all');
+  const [browseDateFilter, setBrowseDateFilter] = useState<string>('all');
 
   // Architecture view state
   const [archTab, setArchTab] = useState<'architecture' | 'schema' | 'auth' | 'qr' | 'payments' | 'decisions' | 'roadmap'>('architecture');
@@ -111,8 +120,14 @@ function MainAppContent() {
     if (params?.category) {
       setBrowseCategory(params.category);
     }
-    if (params?.searchQuery) {
+    if (params?.searchQuery !== undefined) {
       setBrowseSearchQuery(params.searchQuery);
+    }
+    if (params?.location !== undefined) {
+      setBrowseLocation(params.location);
+    }
+    if (params?.dateFilter !== undefined) {
+      setBrowseDateFilter(params.dateFilter);
     }
 
     // Protection check for protected routes
@@ -127,6 +142,8 @@ function MainAppContent() {
     const pathMap: Record<AppView, string> = {
       home: '/',
       browse: '/events',
+      about: '/about',
+      'how-it-works': '/how-it-works',
       detail: selectedEvent ? `/events/${selectedEvent.id}` : '/events',
       checkout: '/checkout',
       'my-tickets': '/tickets',
@@ -277,8 +294,18 @@ function MainAppContent() {
           <BrowseEventsPage
             initialCategory={browseCategory}
             initialSearchQuery={browseSearchQuery}
+            initialLocation={browseLocation}
+            initialDateFilter={browseDateFilter}
             onSelectEvent={handleSelectEvent}
           />
+        )}
+
+        {currentView === 'about' && (
+          <AboutPage onNavigate={handleNavigate} />
+        )}
+
+        {currentView === 'how-it-works' && (
+          <HowItWorksPage onNavigate={handleNavigate} />
         )}
 
         {currentView === 'detail' && selectedEvent && (

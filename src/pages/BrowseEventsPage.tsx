@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, ChevronDown, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, X, Calendar, PlusCircle } from 'lucide-react';
 import { SeedEventData } from '../data/seedEvents';
 import { getAllEvents, EventFilterOptions } from '../services/eventService';
 import { EventCard } from '../components/EventCard';
@@ -7,12 +7,16 @@ import { EventCard } from '../components/EventCard';
 interface BrowseEventsPageProps {
   initialCategory?: string;
   initialSearchQuery?: string;
+  initialLocation?: string;
+  initialDateFilter?: string;
   onSelectEvent: (event: SeedEventData) => void;
 }
 
 export const BrowseEventsPage: React.FC<BrowseEventsPageProps> = ({
   initialCategory = 'all',
   initialSearchQuery = '',
+  initialLocation = 'all',
+  initialDateFilter = 'all',
   onSelectEvent,
 }) => {
   const [events, setEvents] = useState<SeedEventData[]>([]);
@@ -21,8 +25,8 @@ export const BrowseEventsPage: React.FC<BrowseEventsPageProps> = ({
   // Filter states
   const [searchQuery, setSearchQuery] = useState<string>(initialSearchQuery);
   const [category, setCategory] = useState<string>(initialCategory);
-  const [location, setLocation] = useState<string>('all');
-  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'this-week' | 'this-month' | 'upcoming'>('all');
+  const [location, setLocation] = useState<string>(initialLocation);
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'this-weekend' | 'this-week' | 'this-month' | 'next-month'>((initialDateFilter as any) || 'all');
   const [priceFilter, setPriceFilter] = useState<'all' | 'free' | 'paid' | 'under-50k' | 'over-50k'>('all');
   const [sortBy, setSortBy] = useState<'trending' | 'date-asc' | 'date-desc' | 'price-asc' | 'price-desc'>('trending');
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -65,7 +69,7 @@ export const BrowseEventsPage: React.FC<BrowseEventsPageProps> = ({
       {/* Title Header */}
       <div>
         <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Browse Events</h1>
-        <p className="text-slate-500 text-sm mt-1">Find events happening near you</p>
+        <p className="text-slate-500 text-xs sm:text-sm mt-1">Find events happening near you</p>
       </div>
 
       {/* Top Search & Filter Bar */}
@@ -83,7 +87,7 @@ export const BrowseEventsPage: React.FC<BrowseEventsPageProps> = ({
                 setSearchQuery(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full text-sm outline-none text-slate-900 placeholder-slate-400 font-medium"
+              className="w-full text-xs sm:text-sm outline-none text-slate-900 placeholder-slate-400 font-medium"
             />
             {searchQuery && (
               <button
@@ -97,13 +101,13 @@ export const BrowseEventsPage: React.FC<BrowseEventsPageProps> = ({
 
           <button
             onClick={() => setCurrentPage(1)}
-            className="bg-[#00b894] hover:bg-[#00a383] text-white font-semibold px-8 py-2.5 rounded-xl shadow-xs transition-colors cursor-pointer text-sm"
+            className="bg-[#00b894] hover:bg-[#00a383] text-white font-semibold px-8 py-2.5 rounded-xl shadow-xs transition-colors cursor-pointer text-xs sm:text-sm"
           >
             Search
           </button>
         </div>
 
-        {/* Filter Dropdowns Grid matching Figma */}
+        {/* Filter Dropdowns Grid */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
           
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm">
@@ -134,11 +138,12 @@ export const BrowseEventsPage: React.FC<BrowseEventsPageProps> = ({
               className="bg-white border border-slate-300 text-slate-700 font-medium px-3 py-2 rounded-lg shadow-xs focus:outline-none focus:border-[#00b894] cursor-pointer"
             >
               <option value="all">All Locations</option>
-              <option value="lagos">Lagos, Nigeria</option>
-              <option value="washington">Washington, DC</option>
-              <option value="edmonton">Edmonton, AB</option>
-              <option value="chicago">Chicago, IL</option>
-              <option value="london">London, UK</option>
+              <option value="Lagos, Nigeria">Lagos, Nigeria</option>
+              <option value="Abuja, Nigeria">Abuja, Nigeria</option>
+              <option value="Accra, Ghana">Accra, Ghana</option>
+              <option value="Abidjan, Côte d’Ivoire">Abidjan, Côte d’Ivoire</option>
+              <option value="Nairobi, Kenya">Nairobi, Kenya</option>
+              <option value="London, United Kingdom">London, United Kingdom</option>
             </select>
 
             {/* Date Dropdown */}
@@ -150,10 +155,12 @@ export const BrowseEventsPage: React.FC<BrowseEventsPageProps> = ({
               }}
               className="bg-white border border-slate-300 text-slate-700 font-medium px-3 py-2 rounded-lg shadow-xs focus:outline-none focus:border-[#00b894] cursor-pointer"
             >
-              <option value="all">All Dates</option>
+              <option value="all">Any Date</option>
               <option value="today">Today</option>
+              <option value="this-weekend">This Weekend</option>
               <option value="this-week">This Week</option>
               <option value="this-month">This Month</option>
+              <option value="next-month">Next Month</option>
             </select>
 
             {/* Price Dropdown */}
@@ -172,7 +179,7 @@ export const BrowseEventsPage: React.FC<BrowseEventsPageProps> = ({
               <option value="over-50k">Over ₦50,000</option>
             </select>
 
-            {(category !== 'all' || location !== 'all' || priceFilter !== 'all' || searchQuery) && (
+            {(category !== 'all' || location !== 'all' || priceFilter !== 'all' || dateFilter !== 'all' || searchQuery) && (
               <button
                 onClick={resetFilters}
                 className="text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-1 underline cursor-pointer"
@@ -213,17 +220,40 @@ export const BrowseEventsPage: React.FC<BrowseEventsPageProps> = ({
       {loading ? (
         <div className="py-20 text-center space-y-3">
           <div className="w-8 h-8 border-4 border-[#00b894] border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm text-slate-500 font-medium">Loading events...</p>
+          <p className="text-xs sm:text-sm text-slate-500 font-medium">Loading published events...</p>
         </div>
       ) : events.length === 0 ? (
-        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-12 text-center space-y-4">
-          <p className="text-base font-semibold text-slate-700">No events match your current search or filters.</p>
-          <button
-            onClick={resetFilters}
-            className="bg-[#00b894] text-white font-semibold text-xs px-5 py-2.5 rounded-lg cursor-pointer shadow-xs"
-          >
-            Reset Filters
-          </button>
+        <div className="bg-slate-50 border border-slate-200/90 rounded-3xl p-10 sm:p-14 text-center space-y-4 max-w-2xl mx-auto shadow-xs">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-100/70 text-[#00b894] flex items-center justify-center mx-auto">
+            <Calendar className="w-7 h-7" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-lg sm:text-xl font-bold text-slate-900">
+              No Published Events Available
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-500 leading-relaxed max-w-lg mx-auto">
+              There are currently no active events in the attendee catalog. Switch to your Organizer account to publish a new event — it will automatically reflect here for attendees to start purchasing tickets!
+            </p>
+          </div>
+          <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+            <button
+              onClick={() => {
+                window.location.href = '/organizer';
+              }}
+              className="bg-[#00b894] hover:bg-[#00a383] text-white font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl shadow-xs transition-all cursor-pointer flex items-center space-x-2"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Switch to Organizer Portal</span>
+            </button>
+            {(category !== 'all' || location !== 'all' || priceFilter !== 'all' || dateFilter !== 'all' || searchQuery) && (
+              <button
+                onClick={resetFilters}
+                className="bg-white border border-slate-300 text-slate-700 font-semibold text-xs sm:text-sm px-5 py-2.5 rounded-xl cursor-pointer hover:bg-slate-50"
+              >
+                Reset Filters
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
@@ -233,7 +263,7 @@ export const BrowseEventsPage: React.FC<BrowseEventsPageProps> = ({
         </div>
       )}
 
-      {/* Pagination Bar matching Figma */}
+      {/* Pagination Bar */}
       {totalPages > 1 && (
         <div className="flex items-center justify-center space-x-2 pt-6">
           <button

@@ -45,10 +45,16 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
   const [showPassword2, setShowPassword2] = useState(false);
 
   // Step 2: Organization Info
-  const [orgName, setOrgName] = useState('Flytimefest');
+  const [orgName, setOrgName] = useState('');
   const [orgType, setOrgType] = useState('Event Agency');
   const [country, setCountry] = useState('Nigeria');
   const [phoneNumber, setPhoneNumber] = useState('');
+
+  const countryData: Record<string, { flag: string; code: string; currency: string; currencySymbol: string }> = {
+    Nigeria: { flag: '🇳🇬', code: '+234', currency: 'NGN', currencySymbol: '₦' },
+    Ghana: { flag: '🇬🇭', code: '+233', currency: 'GHS', currencySymbol: 'GH₵' },
+    'Côte d’Ivoire': { flag: '🇨🇮', code: '+225', currency: 'XOF', currencySymbol: 'CFA' },
+  };
 
   // Step 3: Payout Setup
   const [payoutOption, setPayoutOption] = useState<'CHOICE' | 'FORM'>('CHOICE');
@@ -448,10 +454,7 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
                           >
                             <option value="Nigeria">Nigeria</option>
                             <option value="Ghana">Ghana</option>
-                            <option value="Kenya">Kenya</option>
-                            <option value="United Kingdom">United Kingdom</option>
-                            <option value="United States">United States</option>
-                            <option value="South Africa">South Africa</option>
+                            <option value="Côte d’Ivoire">Côte d’Ivoire</option>
                           </select>
                           <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-[#00b894]">
                             <ChevronDown className="h-4 w-4" />
@@ -462,8 +465,8 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
                       <div>
                         <div className="relative flex items-center">
                           <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center space-x-1.5 pointer-events-none text-slate-600 font-medium text-xs">
-                            <span className="text-base">🇳🇬</span>
-                            <span>+234</span>
+                            <span className="text-base">{countryData[country]?.flag || '🇳🇬'}</span>
+                            <span>{countryData[country]?.code || '+234'}</span>
                           </div>
                           <input
                             type="tel"
@@ -574,12 +577,14 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
                             <h4 className="font-bold text-slate-800 text-xs mb-2">Country & Currency</h4>
                             <div className="grid grid-cols-2 gap-3">
                               <div className="flex items-center space-x-2 p-3 bg-slate-50/80 border border-slate-200 rounded-xl text-slate-700 font-medium">
-                                <span className="text-base">🇳🇬</span>
-                                <span>Nigeria</span>
+                                <span className="text-base">{countryData[country]?.flag || '🇳🇬'}</span>
+                                <span>{country}</span>
                               </div>
                               <div className="flex items-center space-x-2 p-3 bg-slate-50/80 border border-slate-200 rounded-xl text-slate-700 font-medium">
-                                <div className="w-4 h-4 rounded-full bg-[#00b894] text-white text-[10px] flex items-center justify-center font-bold">₦</div>
-                                <span>NGN</span>
+                                <div className="w-4 h-4 rounded-full bg-[#00b894] text-white text-[10px] flex items-center justify-center font-bold">
+                                  {countryData[country]?.currencySymbol || '₦'}
+                                </div>
+                                <span>{countryData[country]?.currency || 'NGN'}</span>
                               </div>
                             </div>
                           </div>
@@ -612,15 +617,14 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
 
                               <input
                                 type="text"
-                                placeholder="Account number"
+                                maxLength={11}
+                                placeholder="Account number (up to 11 digits)"
                                 value={accountNumber}
                                 onChange={(e) => {
-                                  setAccountNumber(e.target.value);
-                                  if (e.target.value.length === 10) {
-                                    setAccountName('FLYTIMEFEST ENTERTAINMENT LTD');
-                                  }
+                                  const val = e.target.value.replace(/\D/g, '').slice(0, 11);
+                                  setAccountNumber(val);
                                 }}
-                                className="w-full px-3.5 py-2.5 bg-slate-50/70 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#00b894] focus:bg-white transition-all"
+                                className="w-full px-3.5 py-2.5 bg-slate-50/70 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#00b894] focus:bg-white transition-all text-xs"
                               />
 
                               {accountName && (
@@ -628,7 +632,7 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
                                   type="text"
                                   readOnly
                                   value={accountName}
-                                  className="w-full px-3.5 py-2.5 bg-emerald-50/60 border border-emerald-200 rounded-xl text-emerald-800 font-bold focus:outline-none"
+                                  className="w-full px-3.5 py-2.5 bg-emerald-50/60 border border-emerald-200 rounded-xl text-emerald-800 font-bold focus:outline-none text-xs"
                                 />
                               )}
                             </div>
@@ -660,13 +664,18 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
                               </label>
                             </div>
 
-                            <input
-                              type="text"
-                              placeholder="Full name"
-                              value={holderFullName}
-                              onChange={(e) => setHolderFullName(e.target.value)}
-                              className="mt-2.5 w-full px-3.5 py-2.5 bg-slate-50/70 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#00b894] focus:bg-white transition-all"
-                            />
+                            <div className="mt-2.5 space-y-1">
+                              <label className="block text-xs font-semibold text-slate-700">
+                                {accountHolderType === 'Individual' ? 'Full Name' : 'Business Name'}
+                              </label>
+                              <input
+                                type="text"
+                                placeholder={accountHolderType === 'Individual' ? 'Full Name' : 'Registered Business Name'}
+                                value={holderFullName}
+                                onChange={(e) => setHolderFullName(e.target.value)}
+                                className="w-full px-3.5 py-2.5 bg-slate-50/70 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#00b894] focus:bg-white transition-all text-xs"
+                              />
+                            </div>
                           </div>
 
                           <div className="flex items-center space-x-1.5 text-[11px] text-slate-400">
