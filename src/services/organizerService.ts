@@ -689,7 +689,7 @@ export async function inviteOrganizationMember(
       organization_id: orgId,
       action: 'STAFF_INVITED',
       entity_type: 'ORGANIZATION_MEMBER',
-      entity_id: profile.id,
+      entity_id: targetUserId,
       metadata: { email, role },
     });
 
