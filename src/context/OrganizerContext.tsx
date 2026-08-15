@@ -122,8 +122,23 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           // Fetch organization_members entries for this user
           const { data: memberRows } = await supabase
             .from('organization_members')
-            .select('organization_id, role, organizations(*)')
+            .select('organization_id, role')
             .eq('user_id', targetUserId);
+
+          const memberOrgIds = (memberRows || [])
+            .map((r: any) => r.organization_id)
+            .filter(isValidUUID);
+
+          let memberOrgs: Organization[] = [];
+          if (memberOrgIds.length > 0) {
+            const { data: orgsData } = await supabase
+              .from('organizations')
+              .select('*')
+              .in('id', memberOrgIds);
+            if (orgsData) {
+              memberOrgs = orgsData;
+            }
+          }
 
           const orgsMap = new Map<string, Organization>();
 
@@ -135,9 +150,10 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           });
 
           (memberRows || []).forEach((row: any) => {
-            if (row && row.organizations && row.organizations.id && isValidUUID(row.organizations.id)) {
-              orgsMap.set(row.organizations.id, row.organizations);
-              roles[row.organizations.id] = row.role || 'MEMBER';
+            const org = memberOrgs.find((o) => o.id === row.organization_id);
+            if (org && org.id && isValidUUID(org.id)) {
+              orgsMap.set(org.id, org);
+              roles[org.id] = row.role || 'MEMBER';
             }
           });
 

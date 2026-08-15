@@ -17,7 +17,10 @@ import {
   getEventCategories,
   createOrganizerEvent,
   CreateEventInput,
+  isValidUUID,
 } from '../services/organizerService';
+import { useOrganizer } from '../../context/OrganizerContext';
+import { useAuth } from '../../context/AuthContext';
 
 interface CreateEventModalProps {
   orgId: string;
@@ -32,9 +35,26 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
   onSuccess,
   onClose,
 }) => {
+  const { organization, organizationId, organizations } = useOrganizer();
+  const { user } = useAuth();
+
   const [categories, setCategories] = useState<EventCategory[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const effectiveOrgId = (orgId && isValidUUID(orgId))
+    ? orgId
+    : (organizationId && isValidUUID(organizationId))
+    ? organizationId
+    : (organization?.id && isValidUUID(organization.id))
+    ? organization.id
+    : (organizations.find((o) => isValidUUID(o.id))?.id || '');
+
+  const effectiveUserId = (userId && isValidUUID(userId))
+    ? userId
+    : (user?.id && isValidUUID(user.id))
+    ? user.id
+    : '';
 
   const [form, setForm] = useState<{
     title: string;
@@ -195,7 +215,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       ticket_types: form.ticket_types,
     };
 
-    const res = await createOrganizerEvent(orgId, userId, payload);
+    const res = await createOrganizerEvent(effectiveOrgId, effectiveUserId, payload);
     setLoading(false);
 
     if (res.success) {

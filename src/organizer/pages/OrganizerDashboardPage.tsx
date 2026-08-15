@@ -198,10 +198,10 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
         />
       )}
 
-      {isCreateEventOpen && user?.id && (
+      {isCreateEventOpen && (
         <CreateEventModal
           orgId={currentOrgId}
-          userId={user.id}
+          userId={user?.id || ''}
           onSuccess={() => {
             setIsCreateEventOpen(false);
             loadOrgData();

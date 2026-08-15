@@ -68,24 +68,49 @@ export function isValidUUID(id: string | null | undefined): boolean {
 
 // 1. Get User Organizations
 export async function getUserOrganizations(userId: string): Promise<Organization[]> {
-  if (!isSupabaseConfigured || !userId || !isValidUUID(userId)) return [];
+  let resolvedUserId = userId;
+  if (!resolvedUserId || !isValidUUID(resolvedUserId)) {
+    if (isSupabaseConfigured) {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user?.id && isValidUUID(authData.user.id)) {
+          resolvedUserId = authData.user.id;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+
+  if (!isSupabaseConfigured || !resolvedUserId || !isValidUUID(resolvedUserId)) return [];
 
   try {
     // Check organizations created by user
     const { data: createdOrgs } = await supabase
       .from('organizations')
       .select('*')
-      .eq('created_by', userId);
+      .eq('created_by', resolvedUserId);
 
     // Check organizations user is a member of
     const { data: memberRows } = await supabase
       .from('organization_members')
-      .select('organization_id, organizations(*)')
-      .eq('user_id', userId);
+      .select('organization_id, role')
+      .eq('user_id', resolvedUserId);
 
-    const memberOrgs = (memberRows || [])
-      .map((row: any) => row.organizations)
-      .filter((o: any) => o && isValidUUID(o.id));
+    const memberOrgIds = (memberRows || [])
+      .map((r: any) => r.organization_id)
+      .filter(isValidUUID);
+
+    let memberOrgs: Organization[] = [];
+    if (memberOrgIds.length > 0) {
+      const { data: orgsData } = await supabase
+        .from('organizations')
+        .select('*')
+        .in('id', memberOrgIds);
+      if (orgsData) {
+        memberOrgs = orgsData;
+      }
+    }
 
     const allOrgsMap = new Map<string, Organization>();
     (createdOrgs || []).forEach((org: Organization) => {
@@ -280,7 +305,99 @@ export async function createOrganizerEvent(
     return { success: false, error: 'Supabase is not configured.' };
   }
 
+  // 1. Resolve and verify authenticated organizer user ID from Supabase
+  let resolvedUserId = userId;
+  if (!resolvedUserId || !isValidUUID(resolvedUserId)) {
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user?.id && isValidUUID(authData.user.id)) {
+        resolvedUserId = authData.user.id;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  if (!resolvedUserId || !isValidUUID(resolvedUserId)) {
+    return { success: false, error: 'Authenticated organizer user is required to create an event.' };
+  }
+
+  // 2. Resolve organization UUID from public.organization_members and public.organizations
+  let resolvedOrgId = orgId;
+  if (!resolvedOrgId || !isValidUUID(resolvedOrgId)) {
+    try {
+      const { data: memberRows } = await supabase
+        .from('organization_members')
+        .select('organization_id, role')
+        .eq('user_id', resolvedUserId);
+
+      const validMemberRow = (memberRows || []).find((r: any) =>
+        r.organization_id &&
+        isValidUUID(r.organization_id) &&
+        ['OWNER', 'ADMIN', 'MANAGER'].includes(r.role?.toUpperCase())
+      ) || (memberRows || []).find((r: any) => r.organization_id && isValidUUID(r.organization_id));
+
+      if (validMemberRow?.organization_id) {
+        resolvedOrgId = validMemberRow.organization_id;
+      } else {
+        const { data: createdOrgs } = await supabase
+          .from('organizations')
+          .select('id')
+          .eq('created_by', resolvedUserId)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (createdOrgs && createdOrgs.length > 0 && isValidUUID(createdOrgs[0].id)) {
+          resolvedOrgId = createdOrgs[0].id;
+        }
+      }
+    } catch (e) {
+      console.warn('Error resolving organizer organization:', e);
+    }
+  }
+
+  if (!resolvedOrgId || !isValidUUID(resolvedOrgId)) {
+    return {
+      success: false,
+      error: 'No organization found for this organizer. Please set up an organization before creating events.',
+    };
+  }
+
+  // 3. Verify organization exists and organizer membership role (OWNER, ADMIN, MANAGER, or creator)
   try {
+    const { data: orgRecord, error: orgFetchErr } = await supabase
+      .from('organizations')
+      .select('id, name, created_by')
+      .eq('id', resolvedOrgId)
+      .maybeSingle();
+
+    if (orgFetchErr || !orgRecord) {
+      return { success: false, error: 'The specified organization does not exist in the database.' };
+    }
+
+    const isCreator = orgRecord.created_by === resolvedUserId;
+    let hasAuthorizedRole = isCreator;
+
+    if (!hasAuthorizedRole) {
+      const { data: membership } = await supabase
+        .from('organization_members')
+        .select('role')
+        .eq('organization_id', resolvedOrgId)
+        .eq('user_id', resolvedUserId)
+        .maybeSingle();
+
+      if (membership?.role && ['OWNER', 'ADMIN', 'MANAGER'].includes(membership.role.toUpperCase())) {
+        hasAuthorizedRole = true;
+      }
+    }
+
+    if (!hasAuthorizedRole) {
+      return {
+        success: false,
+        error: 'You do not have permission (OWNER, ADMIN, or MANAGER) to create events for this organization.',
+      };
+    }
+
     let venueId: string | null = null;
 
     // Handle venue creation if in-person
@@ -288,7 +405,7 @@ export async function createOrganizerEvent(
       const { data: venue } = await supabase
         .from('venues')
         .insert({
-          organization_id: orgId,
+          organization_id: resolvedOrgId,
           name: input.venue_name,
           address: input.venue_address || input.venue_name,
           city: input.venue_city || 'Lagos',
@@ -306,7 +423,7 @@ export async function createOrganizerEvent(
     const { data: event, error: eventErr } = await supabase
       .from('events')
       .insert({
-        organization_id: orgId,
+        organization_id: resolvedOrgId,
         title: input.title,
         slug: input.slug,
         description: input.description || null,
@@ -321,7 +438,7 @@ export async function createOrganizerEvent(
         end_time: input.end_time,
         status: input.status,
         published_at: input.status === 'PUBLISHED' ? new Date().toISOString() : null,
-        created_by: userId,
+        created_by: resolvedUserId,
       })
       .select()
       .single();
@@ -348,19 +465,23 @@ export async function createOrganizerEvent(
     }
 
     // Audit Log
-    await supabase.from('audit_logs').insert({
-      actor_id: userId,
-      organization_id: orgId,
-      action: input.status === 'PUBLISHED' ? 'EVENT_PUBLISHED' : 'EVENT_CREATED',
-      entity_type: 'EVENT',
-      entity_id: event.id,
-      metadata: { title: event.title, status: event.status },
-    });
+    try {
+      await supabase.from('audit_logs').insert({
+        actor_id: resolvedUserId,
+        organization_id: resolvedOrgId,
+        action: input.status === 'PUBLISHED' ? 'EVENT_PUBLISHED' : 'EVENT_CREATED',
+        entity_type: 'EVENT',
+        entity_id: event.id,
+        metadata: { title: event.title, status: event.status },
+      });
+    } catch (e) {
+      // ignore
+    }
 
     return { success: true, event };
   } catch (e: any) {
     console.error('Create event exception:', e);
-    return { success: false, error: e.message || 'Unexpected error' };
+    return { success: false, error: e.message || 'Unexpected error creating event.' };
   }
 }
 
