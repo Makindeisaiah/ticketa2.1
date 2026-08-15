@@ -61,30 +61,39 @@ export interface PayoutAccountInput {
   business_registration_number?: string;
 }
 
+export function isValidUUID(id: string | null | undefined): boolean {
+  if (!id || typeof id !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id.trim());
+}
+
 // 1. Get User Organizations
 export async function getUserOrganizations(userId: string): Promise<Organization[]> {
-  if (!isSupabaseConfigured || !userId) return [];
+  if (!isSupabaseConfigured || !userId || !isValidUUID(userId)) return [];
 
   try {
     // Check organizations created by user
-    const { data: createdOrgs, error: err1 } = await supabase
+    const { data: createdOrgs } = await supabase
       .from('organizations')
       .select('*')
       .eq('created_by', userId);
 
     // Check organizations user is a member of
-    const { data: memberRows, error: err2 } = await supabase
+    const { data: memberRows } = await supabase
       .from('organization_members')
       .select('organization_id, organizations(*)')
       .eq('user_id', userId);
 
     const memberOrgs = (memberRows || [])
       .map((row: any) => row.organizations)
-      .filter(Boolean);
+      .filter((o: any) => o && isValidUUID(o.id));
 
     const allOrgsMap = new Map<string, Organization>();
-    (createdOrgs || []).forEach((org: Organization) => allOrgsMap.set(org.id, org));
-    memberOrgs.forEach((org: Organization) => allOrgsMap.set(org.id, org));
+    (createdOrgs || []).forEach((org: Organization) => {
+      if (org && isValidUUID(org.id)) allOrgsMap.set(org.id, org);
+    });
+    memberOrgs.forEach((org: Organization) => {
+      if (org && isValidUUID(org.id)) allOrgsMap.set(org.id, org);
+    });
 
     return Array.from(allOrgsMap.values());
   } catch (e) {
@@ -100,6 +109,10 @@ export async function createOrganization(
 ): Promise<{ success: boolean; organization?: Organization; error?: string }> {
   if (!isSupabaseConfigured) {
     return { success: false, error: 'Supabase database is not configured.' };
+  }
+
+  if (!userId || !isValidUUID(userId)) {
+    return { success: false, error: 'Valid user ID is required.' };
   }
 
   try {
@@ -119,7 +132,7 @@ export async function createOrganization(
       .select()
       .single();
 
-    if (orgErr || !org) {
+    if (orgErr || !org || !isValidUUID(org.id)) {
       console.error('Failed to create organization record:', orgErr);
       return { success: false, error: orgErr?.message || 'Failed to create organization.' };
     }
@@ -160,7 +173,7 @@ export async function createOrganization(
 
 // 3. Get Organization Metrics
 export async function getOrganizationMetrics(orgId: string) {
-  if (!isSupabaseConfigured || !orgId) {
+  if (!isSupabaseConfigured || !orgId || !isValidUUID(orgId)) {
     return {
       totalRevenue: 0,
       ticketsSold: 0,

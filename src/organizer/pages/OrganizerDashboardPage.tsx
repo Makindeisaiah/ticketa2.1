@@ -6,6 +6,7 @@ import {
   getOrganizationEvents,
   getOrganizationOrders,
   getOrganizationAttendees,
+  isValidUUID,
 } from '../services/organizerService';
 import { OrganizerLayout, OrganizerTab } from '../components/OrganizerLayout';
 import { Organization } from '../../types/database';
@@ -60,7 +61,7 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
 
   // Load Organization Specific Data safely
   const loadOrgData = async () => {
-    if (!activeOrg?.id) return;
+    if (!activeOrg?.id || !isValidUUID(activeOrg.id)) return;
     setDataLoading(true);
 
     try {
@@ -95,17 +96,17 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
   };
 
   useEffect(() => {
-    if (activeOrg?.id) {
+    if (activeOrg?.id && isValidUUID(activeOrg.id)) {
       loadOrgData();
     }
   }, [activeOrg?.id]);
 
-  const effectiveOrg: Organization = activeOrg || {
-    id: `org_default_${user?.id || 'guest'}`,
-    name: 'Flytimefest',
+  const effectiveOrg: Organization = activeOrg || organizations[0] || {
+    id: '',
+    name: 'My Organization',
     type: 'AGENCY' as const,
     country: 'Nigeria',
-    created_by: user?.id || 'guest',
+    created_by: user?.id || '',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -190,7 +191,7 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
         />
       )}
 
-      {isCreateEventOpen && user?.id && activeOrg && (
+      {isCreateEventOpen && user?.id && activeOrg?.id && isValidUUID(activeOrg.id) && (
         <CreateEventModal
           orgId={activeOrg.id}
           userId={user.id}

@@ -61,9 +61,22 @@ export interface PayoutAccountInput {
   business_registration_number?: string;
 }
 
+export function isValidUUID(id: string | null | undefined): boolean {
+  if (!id || typeof id !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id.trim());
+}
+
 // 1. Get User Organizations
 export async function getUserOrganizations(userId: string): Promise<Organization[]> {
-  if (!userId) return [];
+  if (!userId || !isValidUUID(userId)) return [];
+
+  // Clean up any stale invalid localStorage entries from past sessions
+  try {
+    const localKey = `organizer_local_orgs_${userId}`;
+    localStorage.removeItem(localKey);
+  } catch (e) {
+    // ignore
+  }
 
   let dbOrgs: Organization[] = [];
   if (isSupabaseConfigured) {
@@ -80,51 +93,53 @@ export async function getUserOrganizations(userId: string): Promise<Organization
 
       const memberOrgs = (memberRows || [])
         .map((row: any) => row.organizations)
-        .filter(Boolean);
+        .filter((o: any) => o && isValidUUID(o.id));
 
       const allOrgsMap = new Map<string, Organization>();
       (createdOrgs || []).forEach((org: Organization) => {
-        if (org && org.id) allOrgsMap.set(org.id, org);
+        if (org && org.id && isValidUUID(org.id)) allOrgsMap.set(org.id, org);
       });
       memberOrgs.forEach((org: Organization) => {
-        if (org && org.id) allOrgsMap.set(org.id, org);
+        if (org && org.id && isValidUUID(org.id)) allOrgsMap.set(org.id, org);
       });
 
       dbOrgs = Array.from(allOrgsMap.values());
+
+      // If no organization found in database, auto-provision real organization in public.organizations
+      if (dbOrgs.length === 0) {
+        const { data: newOrg, error: newOrgErr } = await supabase
+          .from('organizations')
+          .insert({
+            name: 'My Organization',
+            type: 'AGENCY',
+            country: 'Nigeria',
+            created_by: userId,
+          })
+          .select()
+          .single();
+
+        if (!newOrgErr && newOrg && isValidUUID(newOrg.id)) {
+          dbOrgs = [newOrg as Organization];
+
+          await supabase.from('organization_members').insert({
+            organization_id: newOrg.id,
+            user_id: userId,
+            role: 'OWNER',
+          });
+
+          await supabase.from('account_types').upsert({
+            user_id: userId,
+            account_type: 'ORGANIZER',
+            updated_at: new Date().toISOString(),
+          });
+        }
+      }
     } catch (e) {
       console.warn('Error fetching user organizations from database:', e);
     }
   }
 
-  // Combine with local storage fallback orgs
-  let localOrgs: Organization[] = [];
-  try {
-    const localKey = `organizer_local_orgs_${userId}`;
-    const raw = localStorage.getItem(localKey);
-    if (raw) localOrgs = JSON.parse(raw);
-  } catch (e) {
-    console.error('Error reading local orgs:', e);
-  }
-
-  const map = new Map<string, Organization>();
-  dbOrgs.forEach((o) => map.set(o.id, o));
-  localOrgs.forEach((o) => map.set(o.id, o));
-
-  let combined = Array.from(map.values());
-  if (combined.length === 0) {
-    const fallback: Organization = {
-      id: `org_default_${userId}`,
-      name: 'My Organization',
-      type: 'AGENCY',
-      country: 'Nigeria',
-      created_by: userId,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    combined = [fallback];
-  }
-
-  return combined;
+  return dbOrgs.filter((o) => o && isValidUUID(o.id));
 }
 
 // 2. Create Organization
@@ -132,46 +147,21 @@ export async function createOrganization(
   userId: string,
   input: CreateOrganizationInput
 ): Promise<{ success: boolean; organization?: Organization; error?: string }> {
-  const fallbackOrg: Organization = {
-    id: `org_local_${Date.now()}`,
-    name: input.name || 'My Organization',
-    type: input.type || 'AGENCY',
-    country: input.country || 'Nigeria',
-    phone_number: input.phone_number || null,
-    description: input.description || null,
-    website: input.website || null,
-    logo_url: input.logo_url || null,
-    created_by: userId,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-
-  const saveLocalOrg = (org: Organization) => {
-    try {
-      const localKey = `organizer_local_orgs_${userId}`;
-      const existingRaw = localStorage.getItem(localKey);
-      const existing: Organization[] = existingRaw ? JSON.parse(existingRaw) : [];
-      if (!existing.some((e) => e.id === org.id)) {
-        existing.push(org);
-        localStorage.setItem(localKey, JSON.stringify(existing));
-      }
-    } catch (err) {
-      console.error('Error writing organization to local storage:', err);
-    }
-  };
-
   if (!isSupabaseConfigured) {
-    saveLocalOrg(fallbackOrg);
-    return { success: true, organization: fallbackOrg };
+    return { success: false, error: 'Database is not configured.' };
+  }
+
+  if (!userId || !isValidUUID(userId)) {
+    return { success: false, error: 'Valid user ID is required.' };
   }
 
   try {
     const { data: org, error: orgErr } = await supabase
       .from('organizations')
       .insert({
-        name: input.name,
-        type: input.type,
-        country: input.country,
+        name: input.name?.trim() || 'My Organization',
+        type: input.type || 'AGENCY',
+        country: input.country || 'Nigeria',
         phone_number: input.phone_number || null,
         description: input.description || null,
         website: input.website || null,
@@ -181,10 +171,9 @@ export async function createOrganization(
       .select()
       .single();
 
-    if (orgErr || !org) {
-      console.warn('Failed to insert organization in database (saving locally):', orgErr);
-      saveLocalOrg(fallbackOrg);
-      return { success: true, organization: fallbackOrg };
+    if (orgErr || !org || !isValidUUID(org.id)) {
+      console.error('Failed to insert organization in database:', orgErr);
+      return { success: false, error: orgErr?.message || 'Failed to create organization in database.' };
     }
 
     try {
@@ -197,18 +186,39 @@ export async function createOrganization(
       console.warn('Failed to create member row:', e);
     }
 
-    saveLocalOrg(org as Organization);
+    try {
+      await supabase.from('account_types').upsert({
+        user_id: userId,
+        account_type: 'ORGANIZER',
+        updated_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Failed to update account_type:', e);
+    }
+
+    try {
+      await supabase.from('audit_logs').insert({
+        actor_id: userId,
+        organization_id: org.id,
+        action: 'ORGANIZATION_CREATED',
+        entity_type: 'ORGANIZATION',
+        entity_id: org.id,
+        metadata: { name: org.name, type: org.type },
+      });
+    } catch (e) {
+      // ignore
+    }
+
     return { success: true, organization: org as Organization };
   } catch (e: any) {
-    console.warn('Create organization exception (saving locally):', e);
-    saveLocalOrg(fallbackOrg);
-    return { success: true, organization: fallbackOrg };
+    console.error('Create organization exception:', e);
+    return { success: false, error: e.message || 'Error creating organization' };
   }
 }
 
 // 3. Get Organization Metrics
 export async function getOrganizationMetrics(orgId: string) {
-  if (!isSupabaseConfigured || !orgId) {
+  if (!isSupabaseConfigured || !orgId || !isValidUUID(orgId)) {
     return {
       totalRevenue: 0,
       ticketsSold: 0,
@@ -276,7 +286,7 @@ export async function getOrganizationMetrics(orgId: string) {
 
 // 4. Get Organization Events
 export async function getOrganizationEvents(orgId: string): Promise<any[]> {
-  if (!isSupabaseConfigured || !orgId) return [];
+  if (!isSupabaseConfigured || !orgId || !isValidUUID(orgId)) return [];
 
   try {
     const { data, error } = await supabase
@@ -310,6 +320,10 @@ export async function createOrganizerEvent(
 ): Promise<{ success: boolean; event?: any; error?: string }> {
   if (!isSupabaseConfigured) {
     return { success: false, error: 'Supabase is not configured.' };
+  }
+
+  if (!orgId || !isValidUUID(orgId) || !userId || !isValidUUID(userId)) {
+    return { success: false, error: 'Valid organization ID and user ID are required.' };
   }
 
   try {
@@ -399,7 +413,7 @@ export async function updateEventStatus(
   userId: string,
   orgId: string
 ): Promise<boolean> {
-  if (!isSupabaseConfigured) return false;
+  if (!isSupabaseConfigured || !isValidUUID(eventId) || !isValidUUID(orgId) || !isValidUUID(userId)) return false;
 
   try {
     const { error } = await supabase
@@ -433,7 +447,7 @@ export async function updateEventStatus(
 
 // 7. Get Organization Orders
 export async function getOrganizationOrders(orgId: string): Promise<any[]> {
-  if (!isSupabaseConfigured || !orgId) return [];
+  if (!isSupabaseConfigured || !orgId || !isValidUUID(orgId)) return [];
 
   try {
     const { data: events } = await supabase
@@ -475,7 +489,7 @@ export async function getOrganizationOrders(orgId: string): Promise<any[]> {
 
 // 8. Get Organization Attendees / Tickets
 export async function getOrganizationAttendees(orgId: string): Promise<any[]> {
-  if (!isSupabaseConfigured || !orgId) return [];
+  if (!isSupabaseConfigured || !orgId || !isValidUUID(orgId)) return [];
 
   try {
     const { data: events } = await supabase
@@ -626,7 +640,7 @@ export async function checkInTicket(
 
 // 10. Get Organization Team Members
 export async function getOrganizationMembers(orgId: string): Promise<any[]> {
-  if (!isSupabaseConfigured || !orgId) return [];
+  if (!isSupabaseConfigured || !orgId || !isValidUUID(orgId)) return [];
 
   try {
     const { data, error } = await supabase
@@ -661,7 +675,9 @@ export async function inviteOrganizationMember(
   role: OrgMemberRole,
   invitedByUserId: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (!isSupabaseConfigured) return { success: false, error: 'Database unconfigured' };
+  if (!isSupabaseConfigured || !isValidUUID(orgId) || !isValidUUID(invitedByUserId)) {
+    return { success: false, error: 'Valid database connection and identifiers required.' };
+  }
 
   try {
     // 1. Check organizer_profiles
@@ -701,7 +717,7 @@ export async function inviteOrganizationMember(
       }
     }
 
-    if (!targetUserId) {
+    if (!targetUserId || !isValidUUID(targetUserId)) {
       return {
         success: false,
         error: `No registered user found with email "${email}". User must create an account first.`,
@@ -739,7 +755,7 @@ export async function inviteOrganizationMember(
 
 // 12. Payout Accounts
 export async function getPayoutAccounts(orgId: string): Promise<PayoutAccount[]> {
-  if (!isSupabaseConfigured || !orgId) return [];
+  if (!isSupabaseConfigured || !orgId || !isValidUUID(orgId)) return [];
 
   try {
     const { data } = await supabase
@@ -757,7 +773,9 @@ export async function addPayoutAccount(
   orgId: string,
   input: PayoutAccountInput
 ): Promise<{ success: boolean; account?: PayoutAccount; error?: string }> {
-  if (!isSupabaseConfigured) return { success: false, error: 'Database unconfigured' };
+  if (!isSupabaseConfigured || !orgId || !isValidUUID(orgId)) {
+    return { success: false, error: 'Valid database connection and organization ID required.' };
+  }
 
   try {
     const { data, error } = await supabase
@@ -785,7 +803,7 @@ export async function addPayoutAccount(
 
 // 13. Payout Requests
 export async function getPayouts(orgId: string): Promise<Payout[]> {
-  if (!isSupabaseConfigured || !orgId) return [];
+  if (!isSupabaseConfigured || !orgId || !isValidUUID(orgId)) return [];
 
   try {
     const { data } = await supabase
@@ -805,7 +823,9 @@ export async function requestPayout(
   payoutAccountId: string,
   amount: number
 ): Promise<{ success: boolean; payout?: Payout; error?: string }> {
-  if (!isSupabaseConfigured) return { success: false, error: 'Database unconfigured' };
+  if (!isSupabaseConfigured || !orgId || !isValidUUID(orgId)) {
+    return { success: false, error: 'Valid database connection and organization ID required.' };
+  }
 
   try {
     const ref = `PO-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -833,7 +853,7 @@ export async function requestPayout(
 
 // 14. Audit Logs
 export async function getAuditLogs(orgId: string): Promise<AuditLog[]> {
-  if (!isSupabaseConfigured || !orgId) return [];
+  if (!isSupabaseConfigured || !orgId || !isValidUUID(orgId)) return [];
 
   try {
     const { data } = await supabase

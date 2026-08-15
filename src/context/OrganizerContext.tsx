@@ -20,6 +20,11 @@ export interface OrganizerContextType {
 
 const OrganizerContext = createContext<OrganizerContextType | undefined>(undefined);
 
+export const isValidUUID = (id: string | null | undefined): boolean => {
+  if (!id || typeof id !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id.trim());
+};
+
 export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user: authUser, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -32,7 +37,7 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const refreshOrganizations = useCallback(async (overrideUserId?: string) => {
     const targetUserId = overrideUserId || authUser?.id;
-    if (!targetUserId) {
+    if (!targetUserId || !isValidUUID(targetUserId)) {
       setOrganizations([]);
       setActiveOrg(null);
       setActiveRole(null);
@@ -43,6 +48,23 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     setIsLoading(true);
     setError(null);
+
+    // Clean up any stale invalid localStorage entries from past sessions
+    try {
+      const localKey = `organizer_local_orgs_${targetUserId}`;
+      localStorage.removeItem(localKey);
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('organizer_local_orgs_')) {
+          const val = localStorage.getItem(key);
+          if (val && (val.includes('org_default_') || val.includes('org_local_'))) {
+            localStorage.removeItem(key);
+          }
+        }
+      }
+    } catch (e) {
+      // ignore localStorage cleanup errors
+    }
 
     try {
       let fetchedOrgs: Organization[] = [];
@@ -96,91 +118,86 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const orgsMap = new Map<string, Organization>();
 
           (createdOrgs || []).forEach((org: Organization) => {
-            if (org && org.id) {
+            if (org && org.id && isValidUUID(org.id)) {
               orgsMap.set(org.id, org);
               roles[org.id] = 'OWNER';
             }
           });
 
           (memberRows || []).forEach((row: any) => {
-            if (row && row.organizations && row.organizations.id) {
+            if (row && row.organizations && row.organizations.id && isValidUUID(row.organizations.id)) {
               orgsMap.set(row.organizations.id, row.organizations);
               roles[row.organizations.id] = row.role || 'MEMBER';
             }
           });
 
           fetchedOrgs = Array.from(orgsMap.values());
+
+          // If organizer has no organization in Supabase, auto-create one in public.organizations
+          if (fetchedOrgs.length === 0) {
+            let defaultName = 'My Organization';
+            try {
+              const userEmail = authUser?.email || '';
+              const pendingKey = `pending_organizer_${userEmail.trim().toLowerCase()}`;
+              const pendingRaw = localStorage.getItem(pendingKey);
+              if (pendingRaw) {
+                const pending = JSON.parse(pendingRaw);
+                if (pending.orgName) defaultName = pending.orgName;
+              } else if (userEmail) {
+                const namePart = userEmail.split('@')[0];
+                defaultName = `${namePart.charAt(0).toUpperCase() + namePart.slice(1)}'s Events`;
+              }
+            } catch (e) {
+              // ignore parse errors
+            }
+
+            const { data: newOrg, error: newOrgErr } = await supabase
+              .from('organizations')
+              .insert({
+                name: defaultName,
+                type: 'AGENCY',
+                country: 'Nigeria',
+                created_by: targetUserId,
+              })
+              .select()
+              .single();
+
+            if (!newOrgErr && newOrg && newOrg.id && isValidUUID(newOrg.id)) {
+              fetchedOrgs = [newOrg as Organization];
+              roles[newOrg.id] = 'OWNER';
+
+              await supabase.from('organization_members').insert({
+                organization_id: newOrg.id,
+                user_id: targetUserId,
+                role: 'OWNER',
+              });
+
+              await supabase.from('account_types').upsert({
+                user_id: targetUserId,
+                account_type: 'ORGANIZER',
+                updated_at: new Date().toISOString(),
+              });
+            }
+          }
         } catch (dbErr) {
           console.warn('Database organization query notice:', dbErr);
         }
       }
 
-      // Read local storage saved organizations
-      const localKey = `organizer_local_orgs_${targetUserId}`;
-      let localOrgs: Organization[] = [];
-      try {
-        const stored = localStorage.getItem(localKey);
-        if (stored) {
-          localOrgs = JSON.parse(stored);
-        }
-      } catch (e) {
-        console.error('Error reading local orgs:', e);
-      }
+      // Filter to only genuine UUID organizations
+      const validOrgs = fetchedOrgs.filter((o) => o && isValidUUID(o.id));
 
-      // Combine fetched database orgs and local storage orgs
-      const combinedMap = new Map<string, Organization>();
-      fetchedOrgs.forEach((o) => combinedMap.set(o.id, o));
-      localOrgs.forEach((o) => combinedMap.set(o.id, o));
-
-      let allOrgs = Array.from(combinedMap.values());
-
-      // Guarantee at least one default organization for every logged in user
-      if (allOrgs.length === 0) {
-        let defaultName = 'My Organization';
-        try {
-          const userEmail = authUser?.email || '';
-          const pendingKey = `pending_organizer_${userEmail.trim().toLowerCase()}`;
-          const pendingRaw = localStorage.getItem(pendingKey);
-          if (pendingRaw) {
-            const pending = JSON.parse(pendingRaw);
-            if (pending.orgName) defaultName = pending.orgName;
-          } else if (userEmail) {
-            const namePart = userEmail.split('@')[0];
-            defaultName = `${namePart.charAt(0).toUpperCase() + namePart.slice(1)}'s Organization`;
-          }
-        } catch (e) {
-          // ignore parsing error
-        }
-
-        const defaultOrg: Organization = {
-          id: `org_default_${targetUserId}`,
-          name: defaultName,
-          type: 'AGENCY',
-          country: 'Nigeria',
-          created_by: targetUserId,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-
-        allOrgs = [defaultOrg];
-        try {
-          localStorage.setItem(localKey, JSON.stringify([defaultOrg]));
-        } catch (e) {
-          console.error('Error storing default org:', e);
-        }
-      }
-
-      allOrgs.forEach((o) => {
+      validOrgs.forEach((o) => {
         if (!roles[o.id]) roles[o.id] = 'OWNER';
       });
 
-      setOrganizations(allOrgs);
+      setOrganizations(validOrgs);
       setRolesMap(roles);
 
       const currentActiveId = activeOrg?.id;
-      const matched = allOrgs.find((o) => o.id === currentActiveId) || allOrgs[0];
+      const matched = (currentActiveId && isValidUUID(currentActiveId) ? validOrgs.find((o) => o.id === currentActiveId) : null) || validOrgs[0] || null;
       setActiveOrg(matched);
-      setActiveRole(roles[matched.id] || 'OWNER');
+      setActiveRole(matched ? (roles[matched.id] || 'OWNER') : null);
     } catch (err: any) {
       console.error('Error loading organizer context:', err);
       setError(err.message || 'Failed to load organization context.');
