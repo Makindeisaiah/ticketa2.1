@@ -34,6 +34,12 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [rolesMap, setRolesMap] = useState<Record<string, OrgMemberRole>>({});
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const activeOrgIdRef = React.useRef<string | null>(null);
+
+  // Sync ref when activeOrg changes
+  useEffect(() => {
+    activeOrgIdRef.current = activeOrg?.id || null;
+  }, [activeOrg?.id]);
 
   const refreshOrganizations = useCallback(async (overrideUserId?: string) => {
     const targetUserId = overrideUserId || authUser?.id;
@@ -79,7 +85,10 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             .eq('id', targetUserId)
             .maybeSingle();
 
+          let organizerName = authUser?.fullName || '';
+
           if (orgProfData) {
+            organizerName = orgProfData.full_name || organizerName;
             setProfile({
               id: orgProfData.id,
               full_name: orgProfData.full_name,
@@ -99,6 +108,7 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               .maybeSingle();
 
             if (profileData) {
+              organizerName = profileData.full_name || organizerName;
               setProfile(profileData as Profile);
             }
           }
@@ -135,7 +145,7 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
           // If organizer has no organization in Supabase, auto-create one in public.organizations
           if (fetchedOrgs.length === 0) {
-            let defaultName = 'My Organization';
+            let defaultName = '';
             try {
               const userEmail = authUser?.email || '';
               const pendingKey = `pending_organizer_${userEmail.trim().toLowerCase()}`;
@@ -143,13 +153,18 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               if (pendingRaw) {
                 const pending = JSON.parse(pendingRaw);
                 if (pending.orgName) defaultName = pending.orgName;
-              } else if (userEmail) {
+              }
+              if (!defaultName && organizerName && organizerName !== 'Ticketa Organizer') {
+                defaultName = `${organizerName}'s Agency`;
+              } else if (!defaultName && userEmail) {
                 const namePart = userEmail.split('@')[0];
                 defaultName = `${namePart.charAt(0).toUpperCase() + namePart.slice(1)}'s Events`;
               }
             } catch (e) {
               // ignore parse errors
             }
+
+            if (!defaultName) defaultName = 'My Organization';
 
             const { data: newOrg, error: newOrgErr } = await supabase
               .from('organizations')
@@ -194,9 +209,10 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setOrganizations(validOrgs);
       setRolesMap(roles);
 
-      const currentActiveId = activeOrg?.id;
+      const currentActiveId = activeOrgIdRef.current;
       const matched = (currentActiveId && isValidUUID(currentActiveId) ? validOrgs.find((o) => o.id === currentActiveId) : null) || validOrgs[0] || null;
       setActiveOrg(matched);
+      activeOrgIdRef.current = matched?.id || null;
       setActiveRole(matched ? (roles[matched.id] || 'OWNER') : null);
     } catch (err: any) {
       console.error('Error loading organizer context:', err);
@@ -204,11 +220,13 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } finally {
       setIsLoading(false);
     }
-  }, [authUser?.id, authUser?.email, activeOrg?.id]);
+  }, [authUser?.id, authUser?.email, authUser?.fullName]);
 
   useEffect(() => {
-    if (!authLoading) {
+    if (!authLoading && authUser?.id) {
       refreshOrganizations();
+    } else if (!authLoading && !authUser) {
+      setIsLoading(false);
     }
   }, [authUser?.id, authLoading, refreshOrganizations]);
 

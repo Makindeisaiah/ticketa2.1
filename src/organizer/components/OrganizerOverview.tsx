@@ -25,7 +25,7 @@ interface OrganizerOverviewProps {
 export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
   metrics,
   events,
-  orgName = 'Flytimefest',
+  orgName = 'Organizer',
   onOpenCreateModal,
   onNavigateTab,
 }) => {

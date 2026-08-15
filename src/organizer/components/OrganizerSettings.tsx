@@ -221,14 +221,17 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
                   <label className="block text-slate-300 font-bold mb-1">Organization Name</label>
                   <input
                     type="text"
-                    defaultValue={activeOrg.name || 'Flytimefest'}
+                    defaultValue={activeOrg.name || 'My Organization'}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-[#00b894]"
                   />
                 </div>
 
                 <div>
                   <label className="block text-slate-300 font-bold mb-1">Organizer Type</label>
-                  <select className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-[#00b894]">
+                  <select
+                    defaultValue={activeOrg.type === 'BUSINESS' ? 'Company' : activeOrg.type === 'INDIVIDUAL' ? 'Individual' : 'Agency'}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-[#00b894]"
+                  >
                     <option>Company</option>
                     <option>Individual</option>
                     <option>Agency</option>
@@ -239,7 +242,7 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
                   <label className="block text-slate-300 font-bold mb-1">Description</label>
                   <textarea
                     rows={4}
-                    defaultValue="Flytimefest Official Organizer Profile on Ticketa"
+                    defaultValue={`${activeOrg.name || 'Official Organizer'} profile on Ticketa`}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-[#00b894] resize-none"
                   />
                 </div>
@@ -483,7 +486,7 @@ export const OrganizerSettings: React.FC<OrganizerSettingsProps> = ({
             <h3 className="text-base font-extrabold text-white border-b border-slate-800 pb-3">Payout Destination</h3>
             <div className="bg-slate-900 p-4 rounded-xl space-y-2 text-xs">
               <span className="font-extrabold text-white block text-sm">Nigerian Bank Account</span>
-              <span className="text-slate-400 block">Organization Account: {activeOrg?.name || 'Flytimefest'}</span>
+              <span className="text-slate-400 block">Organization Account: {activeOrg?.name || 'My Organization'}</span>
             </div>
           </div>
 

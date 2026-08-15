@@ -31,6 +31,7 @@ interface OrganizerLayoutProps {
   activeOrg: Organization | null;
   onSelectOrg: (org: Organization) => void;
   onOpenCreateOrg: () => void;
+  onOpenCreateEvent?: () => void;
   activeTab: OrganizerTab;
   onTabChange: (tab: OrganizerTab) => void;
   onSwitchToAttendee?: () => void;
@@ -47,6 +48,7 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
   activeOrg,
   onSelectOrg,
   onOpenCreateOrg,
+  onOpenCreateEvent,
   activeTab,
   onTabChange,
   subpageTitle,
@@ -138,11 +140,11 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
             >
               <div className="flex items-center space-x-2.5 truncate">
                 <div className="w-7 h-7 rounded-lg bg-[#00b894]/20 border border-[#00b894]/40 text-[#00b894] font-bold text-xs flex items-center justify-center flex-shrink-0">
-                  {activeOrg ? activeOrg.name.charAt(0).toUpperCase() : 'F'}
+                  {activeOrg?.name ? activeOrg.name.charAt(0).toUpperCase() : (user?.fullName ? user.fullName.charAt(0).toUpperCase() : 'O')}
                 </div>
                 <div className="truncate">
                   <span className="block text-xs font-bold text-white truncate">
-                    {activeOrg ? activeOrg.name : 'Flytimefest'}
+                    {activeOrg?.name || user?.fullName || 'My Organization'}
                   </span>
                   <span className="block text-[10px] text-slate-400 uppercase tracking-wider font-medium">
                     {activeOrg?.type || 'ORGANIZER'}
@@ -217,7 +219,7 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
             <div className="flex items-center justify-between text-xs text-slate-400 px-1 py-1">
               <div className="truncate pr-2">
                 <span className="block font-bold text-white text-xs truncate">
-                  {user.fullName || activeOrg?.name || 'Flytimefest'}
+                  {user.fullName || activeOrg?.name || 'Organizer'}
                 </span>
                 <span className="block text-[10px] text-[#00b894] uppercase font-bold tracking-wider">
                   ORGANIZER ADMIN
@@ -336,6 +338,17 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
 
           {/* Header Right Actions */}
           <div className="flex items-center space-x-3 sm:space-x-4 flex-shrink-0">
+            {/* Quick Create Event Button */}
+            {onOpenCreateEvent && (
+              <button
+                onClick={onOpenCreateEvent}
+                className="hidden sm:flex items-center space-x-1.5 bg-[#00b894] hover:bg-[#00a383] text-white px-3.5 py-2 rounded-xl text-xs font-extrabold shadow-md shadow-[#00b894]/20 transition-all cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                <span>Create Event</span>
+              </button>
+            )}
+
             {/* Notification Bell */}
             <button className="relative p-2 bg-slate-900/90 border border-slate-800 rounded-xl text-slate-300 hover:text-white transition-colors cursor-pointer">
               <Bell className="w-4 h-4" />
@@ -347,10 +360,10 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
             {/* Profile Pill */}
             <div className="flex items-center space-x-2.5 bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-1.5">
               <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-[#00b894] font-bold text-xs flex items-center justify-center border border-[#00b894]/30">
-                {activeOrg?.name ? activeOrg.name.charAt(0).toUpperCase() : 'F'}
+                {activeOrg?.name ? activeOrg.name.charAt(0).toUpperCase() : (user?.fullName ? user.fullName.charAt(0).toUpperCase() : 'O')}
               </div>
-              <span className="text-xs font-bold text-white hidden sm:inline-block">
-                {activeOrg?.name || 'Flytimefest'}
+              <span className="text-xs font-bold text-white hidden sm:inline-block max-w-[130px] truncate">
+                {activeOrg?.name || user?.fullName || 'Organizer'}
               </span>
             </div>
           </div>

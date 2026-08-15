@@ -60,22 +60,23 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
   }, [initialTab]);
 
   // Load Organization Specific Data safely
-  const loadOrgData = async () => {
-    if (!activeOrg?.id || !isValidUUID(activeOrg.id)) return;
+  const activeOrgId = activeOrg?.id;
+  const loadOrgData = React.useCallback(async () => {
+    if (!activeOrgId || !isValidUUID(activeOrgId)) return;
     setDataLoading(true);
 
     try {
       const [m, evts, ords, atts] = await Promise.all([
-        getOrganizationMetrics(activeOrg.id).catch(() => ({
+        getOrganizationMetrics(activeOrgId).catch(() => ({
           totalRevenue: 0,
           ticketsSold: 0,
           totalEvents: 0,
           activeEvents: 0,
           totalCheckedIn: 0,
         })),
-        getOrganizationEvents(activeOrg.id).catch(() => []),
-        getOrganizationOrders(activeOrg.id).catch(() => []),
-        getOrganizationAttendees(activeOrg.id).catch(() => []),
+        getOrganizationEvents(activeOrgId).catch(() => []),
+        getOrganizationOrders(activeOrgId).catch(() => []),
+        getOrganizationAttendees(activeOrgId).catch(() => []),
       ]);
 
       setMetrics(m || {
@@ -93,17 +94,17 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
     } finally {
       setDataLoading(false);
     }
-  };
+  }, [activeOrgId]);
 
   useEffect(() => {
-    if (activeOrg?.id && isValidUUID(activeOrg.id)) {
+    if (activeOrgId && isValidUUID(activeOrgId)) {
       loadOrgData();
     }
-  }, [activeOrg?.id]);
+  }, [activeOrgId, loadOrgData]);
 
   const effectiveOrg: Organization = activeOrg || organizations[0] || {
     id: '',
-    name: 'My Organization',
+    name: user?.fullName ? `${user.fullName}'s Agency` : 'My Organization',
     type: 'AGENCY' as const,
     country: 'Nigeria',
     created_by: user?.id || '',
@@ -111,12 +112,17 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
     updated_at: new Date().toISOString(),
   };
 
+  const currentOrgId = (effectiveOrg.id && isValidUUID(effectiveOrg.id))
+    ? effectiveOrg.id
+    : (organizations.find((o) => isValidUUID(o.id))?.id || '');
+
   return (
     <OrganizerLayout
       organizations={organizations.length > 0 ? organizations : [effectiveOrg]}
       activeOrg={effectiveOrg}
       onSelectOrg={(org) => setActiveOrganization(org.id)}
       onOpenCreateOrg={() => setIsCreateOrgOpen(true)}
+      onOpenCreateEvent={() => setIsCreateEventOpen(true)}
       activeTab={activeTab}
       onTabChange={(tab) => {
         setActiveTab(tab);
@@ -139,6 +145,7 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
         <OrganizerOverview
           metrics={metrics}
           events={events}
+          orgName={effectiveOrg?.name || user?.fullName || 'Organizer'}
           onOpenCreateModal={() => setIsCreateEventOpen(true)}
           onNavigateTab={(tab) => {
             setActiveTab(tab);
@@ -150,7 +157,7 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
       {activeTab === 'events' && (
         <OrganizerEvents
           events={events}
-          orgId={effectiveOrg.id}
+          orgId={currentOrgId}
           userId={user?.id || ''}
           onOpenCreateModal={() => setIsCreateEventOpen(true)}
           onRefreshEvents={loadOrgData}
@@ -191,9 +198,9 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
         />
       )}
 
-      {isCreateEventOpen && user?.id && activeOrg?.id && isValidUUID(activeOrg.id) && (
+      {isCreateEventOpen && user?.id && (
         <CreateEventModal
-          orgId={activeOrg.id}
+          orgId={currentOrgId}
           userId={user.id}
           onSuccess={() => {
             setIsCreateEventOpen(false);
