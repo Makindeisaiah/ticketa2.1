@@ -82,16 +82,14 @@ export async function getUserOrganizations(userId: string): Promise<Organization
     }
   }
 
-  if (!isSupabaseConfigured || !resolvedUserId || !isValidUUID(resolvedUserId)) return [];
+  if (!resolvedUserId || !isValidUUID(resolvedUserId) || !isSupabaseConfigured) return [];
 
   try {
-    // Check organizations created by user
     const { data: createdOrgs } = await supabase
       .from('organizations')
       .select('*')
       .eq('created_by', resolvedUserId);
 
-    // Check organizations user is a member of
     const { data: memberRows } = await supabase
       .from('organization_members')
       .select('organization_id, role')
@@ -114,13 +112,34 @@ export async function getUserOrganizations(userId: string): Promise<Organization
 
     const allOrgsMap = new Map<string, Organization>();
     (createdOrgs || []).forEach((org: Organization) => {
-      if (org && isValidUUID(org.id)) allOrgsMap.set(org.id, org);
-    });
-    memberOrgs.forEach((org: Organization) => {
-      if (org && isValidUUID(org.id)) allOrgsMap.set(org.id, org);
+      if (org && isValidUUID(org.id)) {
+        allOrgsMap.set(org.id, org);
+        // Repair missing organization_members record for this creator
+        const hasMemberRow = (memberRows || []).some((m: any) => m.organization_id === org.id);
+        if (!hasMemberRow) {
+          try {
+            supabase
+              .from('organization_members')
+              .insert({
+                organization_id: org.id,
+                user_id: resolvedUserId,
+                role: 'OWNER',
+              })
+              .then(() => {}, () => {});
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
     });
 
-    return Array.from(allOrgsMap.values());
+    memberOrgs.forEach((org: Organization) => {
+      if (org && isValidUUID(org.id)) {
+        allOrgsMap.set(org.id, org);
+      }
+    });
+
+    return Array.from(allOrgsMap.values()).filter((o) => o && isValidUUID(o.id));
   } catch (e) {
     console.error('Error fetching user organizations:', e);
     return [];
@@ -136,23 +155,120 @@ export async function createOrganization(
     return { success: false, error: 'Supabase database is not configured.' };
   }
 
-  if (!userId || !isValidUUID(userId)) {
+  let resolvedUserId = userId;
+  if (!resolvedUserId || !isValidUUID(resolvedUserId)) {
+    const { data: authData } = await supabase.auth.getUser();
+    if (authData?.user?.id && isValidUUID(authData.user.id)) {
+      resolvedUserId = authData.user.id;
+    }
+  }
+
+  if (!resolvedUserId || !isValidUUID(resolvedUserId)) {
     return { success: false, error: 'Valid user ID is required.' };
   }
 
   try {
-    // Insert into public.organizations
+    // 1. Check if the organizer already created or belongs to an organization
+    const { data: existingCreatedOrgs } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('created_by', resolvedUserId)
+      .limit(1);
+
+    if (existingCreatedOrgs && existingCreatedOrgs.length > 0 && isValidUUID(existingCreatedOrgs[0].id)) {
+      const existingOrg = existingCreatedOrgs[0] as Organization;
+      const { data: memberRecord } = await supabase
+        .from('organization_members')
+        .select('id, role')
+        .eq('organization_id', existingOrg.id)
+        .eq('user_id', resolvedUserId)
+        .maybeSingle();
+
+      if (!memberRecord) {
+        try {
+          await supabase.from('organization_members').insert({
+            organization_id: existingOrg.id,
+            user_id: resolvedUserId,
+            role: 'OWNER',
+          });
+        } catch (e) {
+          console.warn('Membership repair notice:', e);
+        }
+      }
+      return { success: true, organization: existingOrg };
+    }
+
+    const { data: existingMemberRows } = await supabase
+      .from('organization_members')
+      .select('organization_id')
+      .eq('user_id', resolvedUserId)
+      .limit(1);
+
+    if (existingMemberRows && existingMemberRows.length > 0 && isValidUUID(existingMemberRows[0].organization_id)) {
+      const { data: existingMemberOrg } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('id', existingMemberRows[0].organization_id)
+        .maybeSingle();
+
+      if (existingMemberOrg && isValidUUID(existingMemberOrg.id)) {
+        return { success: true, organization: existingMemberOrg as Organization };
+      }
+    }
+
+    // 2. Ensure account_types has ORGANIZER role for RLS policy check
+    try {
+      await supabase.from('account_types').upsert({
+        user_id: resolvedUserId,
+        account_type: 'ORGANIZER',
+        updated_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Account type pre-check notice:', e);
+    }
+
+    // 3. Ensure organizer_profiles exists for Foreign Key constraint check
+    try {
+      const { data: authUserData } = await supabase.auth.getUser();
+      const userEmail = authUserData?.user?.email || '';
+      const userName = authUserData?.user?.user_metadata?.full_name || input.name || 'Ticketa Organizer';
+      await supabase.from('organizer_profiles').upsert(
+        {
+          id: resolvedUserId,
+          full_name: userName,
+          email: userEmail || `${resolvedUserId}@organizer.ticketa.app`,
+          phone_number: input.phone_number || null,
+          country: input.country || 'NG',
+          onboarding_completed: true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+    } catch (e) {
+      console.warn('Organizer profile pre-check notice:', e);
+    }
+
+    // 4. Generate unique slug
+    const baseSlug = (input.name || 'organization')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'org';
+    const uniqueSlug = `${baseSlug}-${Math.random().toString(36).substring(2, 8)}`;
+
+    // 5. Insert into public.organizations
     const { data: org, error: orgErr } = await supabase
       .from('organizations')
       .insert({
-        name: input.name,
-        type: input.type,
-        country: input.country,
+        name: input.name?.trim() || 'My Organization',
+        slug: uniqueSlug,
+        type: input.type || 'INDIVIDUAL',
+        country: input.country || 'Nigeria',
         phone_number: input.phone_number || null,
         description: input.description || null,
         website: input.website || null,
         logo_url: input.logo_url || null,
-        created_by: userId,
+        created_by: resolvedUserId,
       })
       .select()
       .single();
@@ -162,32 +278,30 @@ export async function createOrganization(
       return { success: false, error: orgErr?.message || 'Failed to create organization.' };
     }
 
-    // Insert owner into public.organization_members
-    await supabase.from('organization_members').insert({
-      organization_id: org.id,
-      user_id: userId,
-      role: 'OWNER',
-    });
+    // 6. Insert owner into public.organization_members
+    try {
+      await supabase.from('organization_members').insert({
+        organization_id: org.id,
+        user_id: resolvedUserId,
+        role: 'OWNER',
+      });
+    } catch (e) {
+      console.warn('Failed to insert organization member:', e);
+    }
 
-    // Update public.account_types to ORGANIZER
-    await supabase
-      .from('account_types')
-      .upsert({ user_id: userId, account_type: 'ORGANIZER', updated_at: new Date().toISOString() });
-
-    // Ensure public.organizer_profiles exists
-    await supabase
-      .from('organizer_profiles')
-      .upsert({ id: userId, full_name: org.name, email: '', updated_at: new Date().toISOString() });
-
-    // Log audit action
-    await supabase.from('audit_logs').insert({
-      actor_id: userId,
-      organization_id: org.id,
-      action: 'ORGANIZER_CREATED',
-      entity_type: 'ORGANIZATION',
-      entity_id: org.id,
-      metadata: { name: org.name, type: org.type },
-    });
+    // 7. Log audit action
+    try {
+      await supabase.from('audit_logs').insert({
+        actor_id: resolvedUserId,
+        organization_id: org.id,
+        action: 'ORGANIZER_CREATED',
+        entity_type: 'ORGANIZATION',
+        entity_id: org.id,
+        metadata: { name: org.name, type: org.type, slug: org.slug },
+      });
+    } catch (e) {
+      // ignore
+    }
 
     return { success: true, organization: org };
   } catch (e: any) {

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { useAuth } from './AuthContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Organization, OrgMemberRole, Profile } from '../types/database';
+import { createOrganization } from '../organizer/services/organizerService';
 
 export interface OrganizerContextType {
   user: any | null;
@@ -146,6 +147,21 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             if (org && org.id && isValidUUID(org.id)) {
               orgsMap.set(org.id, org);
               roles[org.id] = 'OWNER';
+              const hasMemberRow = (memberRows || []).some((m: any) => m.organization_id === org.id);
+              if (!hasMemberRow) {
+                try {
+                  supabase
+                    .from('organization_members')
+                    .insert({
+                      organization_id: org.id,
+                      user_id: targetUserId,
+                      role: 'OWNER',
+                    })
+                    .then(() => {}, () => {});
+                } catch (e) {
+                  // ignore
+                }
+              }
             }
           });
 
@@ -159,55 +175,28 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
           fetchedOrgs = Array.from(orgsMap.values());
 
-          // If organizer has no organization in Supabase, auto-create one in public.organizations
+          // If organizer has pending onboarding data from registration, process it
           if (fetchedOrgs.length === 0) {
-            let defaultName = '';
-            try {
-              const userEmail = authUser?.email || '';
-              const pendingKey = `pending_organizer_${userEmail.trim().toLowerCase()}`;
-              const pendingRaw = localStorage.getItem(pendingKey);
-              if (pendingRaw) {
+            const userEmail = authUser?.email || '';
+            const pendingKey = `pending_organizer_${userEmail.trim().toLowerCase()}`;
+            const pendingRaw = localStorage.getItem(pendingKey);
+            if (pendingRaw) {
+              try {
                 const pending = JSON.parse(pendingRaw);
-                if (pending.orgName) defaultName = pending.orgName;
+                const createdResult = await createOrganization(targetUserId, {
+                  name: pending.orgName || (organizerName ? `${organizerName}'s Agency` : 'My Organization'),
+                  type: (pending.orgType === 'Event Agency' ? 'AGENCY' : pending.orgType === 'Registered Business' ? 'BUSINESS' : 'INDIVIDUAL') as any,
+                  country: pending.country || 'Nigeria',
+                  phone_number: pending.phoneNumber || '',
+                });
+                if (createdResult.success && createdResult.organization && isValidUUID(createdResult.organization.id)) {
+                  fetchedOrgs = [createdResult.organization];
+                  roles[createdResult.organization.id] = 'OWNER';
+                  localStorage.removeItem(pendingKey);
+                }
+              } catch (parseErr) {
+                console.warn('Pending organization parse error:', parseErr);
               }
-              if (!defaultName && organizerName && organizerName !== 'Ticketa Organizer') {
-                defaultName = `${organizerName}'s Agency`;
-              } else if (!defaultName && userEmail) {
-                const namePart = userEmail.split('@')[0];
-                defaultName = `${namePart.charAt(0).toUpperCase() + namePart.slice(1)}'s Events`;
-              }
-            } catch (e) {
-              // ignore parse errors
-            }
-
-            if (!defaultName) defaultName = 'My Organization';
-
-            const { data: newOrg, error: newOrgErr } = await supabase
-              .from('organizations')
-              .insert({
-                name: defaultName,
-                type: 'AGENCY',
-                country: 'Nigeria',
-                created_by: targetUserId,
-              })
-              .select()
-              .single();
-
-            if (!newOrgErr && newOrg && newOrg.id && isValidUUID(newOrg.id)) {
-              fetchedOrgs = [newOrg as Organization];
-              roles[newOrg.id] = 'OWNER';
-
-              await supabase.from('organization_members').insert({
-                organization_id: newOrg.id,
-                user_id: targetUserId,
-                role: 'OWNER',
-              });
-
-              await supabase.from('account_types').upsert({
-                user_id: targetUserId,
-                account_type: 'ORGANIZER',
-                updated_at: new Date().toISOString(),
-              });
             }
           }
         } catch (dbErr) {
