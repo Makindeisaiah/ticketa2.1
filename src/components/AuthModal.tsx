@@ -17,7 +17,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   initialMode = 'signin',
   actionTitle = 'Sign in to continue your ticket checkout',
 }) => {
-  const { signIn, signUpAttendee } = useAuth();
+  const { signIn, signUpAttendee, resendVerificationEmail } = useAuth();
 
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
 
@@ -35,6 +35,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [unverifiedSuccess, setUnverifiedSuccess] = useState(false);
+  const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [resendMsg, setResendMsg] = useState('');
 
   if (!isOpen) return null;
 
@@ -162,19 +164,74 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           
           {unverifiedSuccess ? (
             <div className="text-center space-y-4 py-2">
-              <CheckCircle2 className="w-12 h-12 text-[#00b894] mx-auto" />
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-[#00b894] border border-emerald-200 flex items-center justify-center mx-auto shadow-xs">
+                <Mail className="w-6 h-6" />
+              </div>
               <div className="space-y-1">
                 <h4 className="font-bold text-slate-900 text-base">Check Your Email</h4>
-                <p className="text-xs text-slate-600">
-                  A verification link was sent to <strong>{signUpEmail}</strong>. Verify your email then click Sign In below.
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  A verification link was sent to <strong className="text-slate-900">{signUpEmail}</strong>. Please check your inbox or spam folder to activate your account.
                 </p>
               </div>
-              <button
-                onClick={() => { setUnverifiedSuccess(false); setMode('signin'); }}
-                className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-bold text-xs py-2.5 rounded-xl cursor-pointer"
-              >
-                Switch to Sign In
-              </button>
+
+              {resendMsg && (
+                <div
+                  className={`p-2.5 rounded-xl text-[11px] flex items-start space-x-1.5 text-left ${
+                    resendStatus === 'sent'
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      : 'bg-rose-50 text-rose-800 border border-rose-200'
+                  }`}
+                >
+                  {resendStatus === 'sent' ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-600 flex-shrink-0 mt-0.5" />
+                  )}
+                  <span>{resendMsg}</span>
+                </div>
+              )}
+
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[11px] text-slate-600 text-left space-y-1">
+                <p className="font-semibold text-slate-800">Didn’t receive the email?</p>
+                <ul className="list-disc list-inside space-y-0.5 text-slate-500">
+                  <li>Check your <strong>Spam</strong> / <strong>Junk</strong> folder.</li>
+                  <li>Click resend below to request a new link.</li>
+                </ul>
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <button
+                  onClick={() => {
+                    setUnverifiedSuccess(false);
+                    setSignInEmail(signUpEmail);
+                    setMode('signin');
+                  }}
+                  className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-bold text-xs py-2.5 rounded-xl cursor-pointer transition-all shadow-xs flex items-center justify-center space-x-1.5"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>I’ve Verified — Sign In</span>
+                </button>
+
+                <button
+                  onClick={async () => {
+                    if (!signUpEmail) return;
+                    setResendStatus('sending');
+                    setResendMsg('');
+                    const res = await resendVerificationEmail(signUpEmail);
+                    if (res.success) {
+                      setResendStatus('sent');
+                      setResendMsg('Verification email resent! Please check your inbox & spam folder.');
+                    } else {
+                      setResendStatus('error');
+                      setResendMsg(res.error || 'Failed to resend verification email.');
+                    }
+                  }}
+                  disabled={resendStatus === 'sending'}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs py-2 rounded-xl cursor-pointer transition-all"
+                >
+                  {resendStatus === 'sending' ? 'Sending...' : 'Resend Verification Email'}
+                </button>
+              </div>
             </div>
           ) : (
             <>

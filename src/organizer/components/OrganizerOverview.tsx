@@ -18,7 +18,7 @@ interface OrganizerOverviewProps {
   };
   events: any[];
   orgName?: string;
-  onOpenCreateModal: () => void;
+  onOpenCreateModal?: () => void;
   onNavigateTab: (tab: any) => void;
 }
 
@@ -26,7 +26,6 @@ export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
   metrics,
   events,
   orgName = 'Organizer',
-  onOpenCreateModal,
   onNavigateTab,
 }) => {
   const [timeRange, setTimeRange] = useState<'Daily' | 'Weekly' | 'Monthly'>('Daily');
@@ -37,6 +36,7 @@ export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
   const displayEvents = metrics.activeEvents || 0;
   const displayCheckIns = `${(metrics.totalCheckedIn || 0).toLocaleString()}`;
   const upcomingEventsList = events || [];
+  const hasRevenue = (metrics.totalRevenue || 0) > 0;
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -131,93 +131,49 @@ export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
           </div>
         </div>
 
-        {/* Area Chart SVG */}
-        <div className="w-full h-64 relative pt-4">
-          <svg className="w-full h-full overflow-visible" viewBox="0 0 800 220" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="revenueGlow" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#00b894" stopOpacity="0.45" />
-                <stop offset="100%" stopColor="#00b894" stopOpacity="0.0" />
-              </linearGradient>
-            </defs>
-
-            {/* Gridlines */}
-            {[0, 45, 90, 135, 180].map((y, idx) => (
-              <line
-                key={idx}
-                x1="60"
-                y1={y}
-                x2="780"
-                y2={y}
-                stroke="#1e293b"
-                strokeWidth="1"
-                strokeDasharray="4 4"
+        {hasRevenue ? (
+          <div className="w-full h-64 relative pt-4">
+            <svg className="w-full h-full overflow-visible" viewBox="0 0 800 220" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="revenueGlow" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#00b894" stopOpacity="0.45" />
+                  <stop offset="100%" stopColor="#00b894" stopOpacity="0.0" />
+                </linearGradient>
+              </defs>
+              {[0, 45, 90, 135, 180].map((y, idx) => (
+                <line
+                  key={idx}
+                  x1="60"
+                  y1={y}
+                  x2="780"
+                  y2={y}
+                  stroke="#1e293b"
+                  strokeWidth="1"
+                  strokeDasharray="4 4"
+                />
+              ))}
+              <path
+                d="M 80 170 C 150 160, 220 120, 290 100 C 360 80, 430 110, 500 60 C 570 20, 640 40, 710 30 L 710 180 L 80 180 Z"
+                fill="url(#revenueGlow)"
               />
-            ))}
-
-            {/* Y Axis Labels */}
-            <text x="0" y="10" fill="#64748b" fontSize="10" fontWeight="bold">#3,000,000,000</text>
-            <text x="0" y="50" fill="#64748b" fontSize="10" fontWeight="bold">#1,200,000,000</text>
-            <text x="0" y="95" fill="#64748b" fontSize="10" fontWeight="bold">#500,000,000</text>
-            <text x="0" y="140" fill="#64748b" fontSize="10" fontWeight="bold">#100,000,000</text>
-            <text x="0" y="185" fill="#64748b" fontSize="10" fontWeight="bold">#0</text>
-
-            {/* Area Fill */}
-            <path
-              d="M 80 170 C 150 160, 220 120, 290 100 C 360 80, 430 110, 500 60 C 570 20, 640 40, 710 30 L 710 180 L 80 180 Z"
-              fill="url(#revenueGlow)"
-            />
-
-            {/* Smooth Curve Stroke */}
-            <path
-              d="M 80 170 C 150 160, 220 120, 290 100 C 360 80, 430 110, 500 60 C 570 20, 640 40, 710 30"
-              fill="none"
-              stroke="#00b894"
-              strokeWidth="3.5"
-              strokeLinecap="round"
-            />
-
-            {/* Curve Dots */}
-            {[
-              { x: 80, y: 170 },
-              { x: 160, y: 155 },
-              { x: 240, y: 115 },
-              { x: 320, y: 90 },
-              { x: 400, y: 105 },
-              { x: 480, y: 65 },
-              { x: 560, y: 25 },
-              { x: 640, y: 38 },
-              { x: 710, y: 30 },
-            ].map((pt, i) => (
-              <circle
-                key={i}
-                cx={pt.x}
-                cy={pt.y}
-                r="4.5"
-                fill="#0b0f17"
+              <path
+                d="M 80 170 C 150 160, 220 120, 290 100 C 360 80, 430 110, 500 60 C 570 20, 640 40, 710 30"
+                fill="none"
                 stroke="#00b894"
-                strokeWidth="2.5"
+                strokeWidth="3.5"
+                strokeLinecap="round"
               />
-            ))}
-
-            {/* X Axis Date Labels */}
-            {['Apr 12', 'Apr 13', 'Apr 14', 'Apr 15', 'Apr 16', 'Apr 17', 'Apr 18', 'Apr 19', 'Apr 20'].map(
-              (date, i) => (
-                <text
-                  key={i}
-                  x={80 + i * 78}
-                  y="208"
-                  fill="#64748b"
-                  fontSize="11"
-                  fontWeight="bold"
-                  textAnchor="middle"
-                >
-                  {date}
-                </text>
-              )
-            )}
-          </svg>
-        </div>
+            </svg>
+          </div>
+        ) : (
+          <div className="py-12 text-center bg-slate-900/40 border border-slate-800/60 rounded-xl space-y-2">
+            <TrendingUp className="w-8 h-8 text-slate-600 mx-auto" />
+            <p className="text-sm font-bold text-slate-300">No revenue data recorded yet</p>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              Real-time revenue curves and performance metrics will populate automatically when ticket sales commence.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Upcoming Events Section */}
@@ -265,16 +221,12 @@ export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
             ))}
           </div>
         ) : (
-          <div className="text-center py-10 bg-slate-900/40 border border-slate-800/80 rounded-xl space-y-3">
+          <div className="text-center py-10 bg-slate-900/40 border border-slate-800/80 rounded-xl space-y-2">
             <Calendar className="w-8 h-8 text-slate-500 mx-auto" />
-            <p className="text-sm font-bold text-slate-300">No upcoming events yet</p>
-            <p className="text-xs text-slate-500 max-w-xs mx-auto">Create an event to start publishing and tracking ticket sales.</p>
-            <button
-              onClick={onOpenCreateModal}
-              className="px-4 py-2 bg-[#00b894] hover:bg-[#00a383] text-white rounded-xl text-xs font-black shadow-md shadow-[#00b894]/20 transition-colors cursor-pointer inline-flex items-center space-x-1.5"
-            >
-              <span>Create New Event</span>
-            </button>
+            <p className="text-sm font-bold text-slate-300">No events yet</p>
+            <p className="text-xs text-slate-500 max-w-xs mx-auto">
+              Your published and draft events will appear here.
+            </p>
           </div>
         )}
       </div>

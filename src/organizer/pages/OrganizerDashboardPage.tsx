@@ -14,8 +14,8 @@ import { OrganizerOverview } from '../components/OrganizerOverview';
 import { OrganizerEvents } from '../components/OrganizerEvents';
 import { OrganizerAnalytics } from '../components/OrganizerAnalytics';
 import { OrganizerTicketSales } from '../components/OrganizerTicketSales';
-import { OrganizerCheckIns } from '../components/OrganizerCheckIns';
-import { CreateEventModal } from '../components/CreateEventModal';
+import { OrganizerOrdersAttendees } from '../components/OrganizerOrdersAttendees';
+import { OrganizerTeam } from '../components/OrganizerTeam';
 import { OrganizerSettings, SettingsSubSection } from '../components/OrganizerSettings';
 import { OrganizerOnboardingModal } from '../components/OrganizerOnboardingModal';
 
@@ -38,7 +38,6 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
 
   const [activeTab, setActiveTab] = useState<OrganizerTab>(initialTab);
   const [isCreateOrgOpen, setIsCreateOrgOpen] = useState(false);
-  const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
   const [subpageTitle, setSubpageTitle] = useState<string | null>(null);
   const [settingsSubSection, setSettingsSubSection] = useState<SettingsSubSection>(null);
 
@@ -104,8 +103,8 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
 
   const effectiveOrg: Organization = activeOrg || organizations[0] || {
     id: '',
-    name: user?.fullName ? `${user.fullName}'s Agency` : 'My Organization',
-    type: 'AGENCY' as const,
+    name: user?.fullName ? `${user.fullName}'s Organization` : 'My Organization',
+    type: 'INDIVIDUAL' as const,
     country: 'Nigeria',
     created_by: user?.id || '',
     created_at: new Date().toISOString(),
@@ -122,7 +121,6 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
       activeOrg={effectiveOrg}
       onSelectOrg={(org) => setActiveOrganization(org.id)}
       onOpenCreateOrg={() => setIsCreateOrgOpen(true)}
-      onOpenCreateEvent={() => setIsCreateEventOpen(true)}
       activeTab={activeTab}
       onTabChange={(tab) => {
         setActiveTab(tab);
@@ -146,7 +144,6 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
           metrics={metrics}
           events={events}
           orgName={effectiveOrg?.name || user?.fullName || 'Organizer'}
-          onOpenCreateModal={() => setIsCreateEventOpen(true)}
           onNavigateTab={(tab) => {
             setActiveTab(tab);
             window.history.pushState({}, '', `/organizer/${tab}`);
@@ -159,19 +156,25 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
           events={events}
           orgId={currentOrgId}
           userId={user?.id || ''}
-          onOpenCreateModal={() => setIsCreateEventOpen(true)}
+          onOpenCreateModal={() => {}}
           onRefreshEvents={loadOrgData}
         />
+      )}
+
+      {activeTab === 'orders' && (
+        <OrganizerOrdersAttendees orders={orders} attendees={attendees} />
+      )}
+
+      {activeTab === 'tickets' && (
+        <OrganizerTicketSales orders={orders} />
       )}
 
       {activeTab === 'analytics' && (
         <OrganizerAnalytics events={events} orders={orders} metrics={metrics} />
       )}
 
-      {activeTab === 'orders' && <OrganizerTicketSales orders={orders} />}
-
-      {activeTab === 'scanner' && (
-        <OrganizerCheckIns events={events} userId={user?.id || ''} />
+      {activeTab === 'team' && (
+        <OrganizerTeam orgId={currentOrgId} userId={user?.id || ''} />
       )}
 
       {activeTab === 'settings' && (
@@ -195,18 +198,6 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
             refreshOrganizations(user.id);
           }}
           onClose={() => setIsCreateOrgOpen(false)}
-        />
-      )}
-
-      {isCreateEventOpen && (
-        <CreateEventModal
-          orgId={currentOrgId}
-          userId={user?.id || ''}
-          onSuccess={() => {
-            setIsCreateEventOpen(false);
-            loadOrgData();
-          }}
-          onClose={() => setIsCreateEventOpen(false)}
         />
       )}
     </OrganizerLayout>

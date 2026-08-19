@@ -246,30 +246,25 @@ export const OrganizerEvents: React.FC<OrganizerEventsProps> = ({
       </div>
 
       {/* Pagination Footer */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
-        <span className="text-xs text-slate-400 font-medium">Showing 1 to 3 of 12</span>
+      {filteredEvents.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
+          <span className="text-xs text-slate-400 font-medium">
+            Showing 1 to {filteredEvents.length} of {filteredEvents.length}
+          </span>
 
-        <div className="flex items-center space-x-2">
-          <button className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer">
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <button className="w-8 h-8 rounded-xl bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center cursor-pointer">
-            1
-          </button>
-          <button className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white text-xs font-bold flex items-center justify-center cursor-pointer">
-            2
-          </button>
-          <button className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white text-xs font-bold flex items-center justify-center cursor-pointer">
-            3
-          </button>
-          <button className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white text-xs font-bold flex items-center justify-center cursor-pointer">
-            4
-          </button>
-          <button className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer">
-            <ChevronRight className="w-4 h-4" />
-          </button>
+          <div className="flex items-center space-x-2">
+            <button className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button className="w-8 h-8 rounded-xl bg-[#00b894] text-white font-black text-xs flex items-center justify-center cursor-pointer">
+              1
+            </button>
+            <button className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

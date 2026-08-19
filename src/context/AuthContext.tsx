@@ -45,6 +45,7 @@ export interface AuthContextType {
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   updatePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
+  resendVerificationEmail: (email: string) => Promise<{ success: boolean; error?: string }>;
   refreshProfile: () => Promise<void>;
 }
 
@@ -120,7 +121,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               phoneNumber = legacyProfile.phone_number || phoneNumber;
               determinedType = legacyProfile.role === 'ADMIN' ? 'ADMIN' : 'ORGANIZER';
             }
+
+            // Sync organizer_profiles now that we have session
+            try {
+              await supabase.from('organizer_profiles').upsert(
+                {
+                  id: supabaseUser.id,
+                  full_name: fullName || 'Ticketa Organizer',
+                  email: supabaseUser.email?.trim().toLowerCase() || '',
+                  phone_number: phoneNumber || null,
+                  country: 'NG',
+                  onboarding_completed: true,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'id' }
+              );
+            } catch (e) {}
           }
+
+          // Ensure account_types row exists
+          if (!accountTypeData) {
+            try {
+              await supabase.from('account_types').upsert(
+                {
+                  user_id: supabaseUser.id,
+                  account_type: 'ORGANIZER',
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'user_id' }
+              );
+            } catch (e) {}
+          }
+
+          // Ensure profiles row exists
+          try {
+            await supabase.from('profiles').upsert(
+              {
+                id: supabaseUser.id,
+                full_name: fullName || 'Ticketa Organizer',
+                email: supabaseUser.email?.trim().toLowerCase() || '',
+                phone_number: phoneNumber || null,
+                role: determinedType === 'ADMIN' ? 'ADMIN' : 'ORGANIZER',
+                is_email_verified: Boolean(supabaseUser.email_confirmed_at),
+              },
+              { onConflict: 'id' }
+            );
+          } catch (e) {}
         } else {
           // Attendee
           const { data: attData } = await supabase
@@ -153,7 +199,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               fullName = legacyProfile.full_name || fullName;
               phoneNumber = legacyProfile.phone_number || phoneNumber;
             }
+
+            // Sync attendee_profiles now that we have session
+            try {
+              await supabase.from('attendee_profiles').upsert(
+                {
+                  id: supabaseUser.id,
+                  full_name: fullName || 'Ticketa Attendee',
+                  email: supabaseUser.email?.trim().toLowerCase() || '',
+                  phone_number: phoneNumber || null,
+                  is_email_verified: Boolean(supabaseUser.email_confirmed_at),
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'id' }
+              );
+            } catch (e) {}
           }
+
+          // Ensure account_types row exists
+          if (!accountTypeData) {
+            try {
+              await supabase.from('account_types').upsert(
+                {
+                  user_id: supabaseUser.id,
+                  account_type: 'ATTENDEE',
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'user_id' }
+              );
+            } catch (e) {}
+          }
+
+          // Ensure profiles row exists
+          try {
+            await supabase.from('profiles').upsert(
+              {
+                id: supabaseUser.id,
+                full_name: fullName || 'Ticketa Attendee',
+                email: supabaseUser.email?.trim().toLowerCase() || '',
+                phone_number: phoneNumber || null,
+                role: 'ATTENDEE',
+                is_email_verified: Boolean(supabaseUser.email_confirmed_at),
+              },
+              { onConflict: 'id' }
+            );
+          } catch (e) {}
         }
       } catch (e) {
         console.warn('Account type/profile fetch notice:', e);
@@ -719,6 +809,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // 9. RESEND VERIFICATION EMAIL
+  const resendVerificationEmail = async (email: string) => {
+    if (!email || !email.trim()) {
+      return { success: false, error: 'Email address is required.' };
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        const { error } = await supabase.auth.resend({
+          type: 'signup',
+          email: email.trim().toLowerCase(),
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+          },
+        });
+        if (error) {
+          return { success: false, error: error.message };
+        }
+        return { success: true };
+      } catch (e: any) {
+        return { success: false, error: e.message || 'Failed to resend verification email.' };
+      }
+    } else {
+      return { success: true };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -739,6 +856,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signOut,
         resetPassword,
         updatePassword,
+        resendVerificationEmail,
         refreshProfile,
       }}
     >

@@ -28,13 +28,17 @@ interface OrganizerAuthProps {
 }
 
 export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initialMode = 'signup' }) => {
-  const { signInOrganizer, signUpOrganizer, isConfigured } = useAuth();
+  const { signInOrganizer, signUpOrganizer, resendVerificationEmail, isConfigured } = useAuth();
   
   // 'signin' or 'signup'
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
   
   // Step in signup flow (1 to 4)
   const [step, setStep] = useState<number>(1);
+
+  // Resend state
+  const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [resendMsg, setResendMsg] = useState('');
 
   // Step 1: User Account
   const [fullName, setFullName] = useState('');
@@ -235,30 +239,81 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
     }
   };
 
+  const handleResendVerification = async () => {
+    if (!signUpEmail) return;
+    setResendStatus('sending');
+    setResendMsg('');
+    const res = await resendVerificationEmail(signUpEmail);
+    if (res.success) {
+      setResendStatus('sent');
+      setResendMsg('Verification email resent successfully! Please check your inbox and spam folder.');
+    } else {
+      setResendStatus('error');
+      setResendMsg(res.error || 'Failed to resend verification email.');
+    }
+  };
+
   if (isSuccessUnverified) {
     return (
       <div className="min-h-screen bg-[#365870] flex flex-col justify-center items-center p-6 text-slate-900 antialiased">
         <div className="max-w-md w-full bg-white border border-slate-100 p-8 rounded-3xl shadow-2xl text-center space-y-6">
           <div className="w-16 h-16 bg-[#00b894]/15 border border-[#00b894]/30 text-[#00b894] rounded-2xl flex items-center justify-center mx-auto shadow-sm">
-            <CheckCircle2 className="w-8 h-8" />
+            <Mail className="w-8 h-8" />
           </div>
 
           <div className="space-y-2">
-            <h2 className="text-2xl font-bold text-slate-900">Verify Your Email</h2>
-            <p className="text-xs text-slate-500">
-              We sent a verification link to <strong className="text-slate-800">{signUpEmail}</strong>.
+            <h2 className="text-2xl font-extrabold text-slate-900">Verify Your Email</h2>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              We sent a verification link to <strong className="text-slate-900">{signUpEmail}</strong>. Please click the link to activate your organizer account.
             </p>
           </div>
 
-          <button
-            onClick={() => {
-              setIsSuccessUnverified(false);
-              setMode('signin');
-            }}
-            className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-bold py-3.5 px-4 rounded-xl cursor-pointer transition-all shadow-md text-xs"
-          >
-            Go to Organizer Sign In
-          </button>
+          {resendMsg && (
+            <div
+              className={`p-3 rounded-xl text-xs flex items-start space-x-2 text-left ${
+                resendStatus === 'sent'
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                  : 'bg-rose-50 text-rose-800 border border-rose-200'
+              }`}
+            >
+              {resendStatus === 'sent' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+              )}
+              <span>{resendMsg}</span>
+            </div>
+          )}
+
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-[11px] text-slate-600 text-left space-y-1.5">
+            <p className="font-semibold text-slate-800">Didn’t receive the email?</p>
+            <ul className="list-disc list-inside space-y-0.5 text-slate-500">
+              <li>Check your <strong>Spam</strong> or <strong>Junk</strong> folder.</li>
+              <li>Wait 30–60 seconds for email delivery.</li>
+              <li>Click the resend button below to request a new email.</li>
+            </ul>
+          </div>
+
+          <div className="space-y-3">
+            <button
+              onClick={() => {
+                setIsSuccessUnverified(false);
+                setMode('signin');
+              }}
+              className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-bold py-3 px-4 rounded-xl cursor-pointer transition-all shadow-md text-xs flex items-center justify-center space-x-1.5"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>I’ve Verified My Email — Sign In</span>
+            </button>
+
+            <button
+              onClick={handleResendVerification}
+              disabled={resendStatus === 'sending'}
+              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 px-4 rounded-xl cursor-pointer transition-all text-xs"
+            >
+              {resendStatus === 'sending' ? 'Sending...' : 'Resend Verification Email'}
+            </button>
+          </div>
         </div>
       </div>
     );

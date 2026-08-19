@@ -175,28 +175,47 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
           fetchedOrgs = Array.from(orgsMap.values());
 
-          // If organizer has pending onboarding data from registration, process it
+          // If organizer has no organizations yet, create one using pending data or default
           if (fetchedOrgs.length === 0) {
             const userEmail = authUser?.email || '';
             const pendingKey = `pending_organizer_${userEmail.trim().toLowerCase()}`;
             const pendingRaw = localStorage.getItem(pendingKey);
+            let orgName = organizerName ? `${organizerName}'s Organization` : 'My Organization';
+            let orgType: any = 'INDIVIDUAL';
+            let orgCountry = 'Nigeria';
+            let orgPhone = authUser?.phoneNumber || '';
+
             if (pendingRaw) {
               try {
                 const pending = JSON.parse(pendingRaw);
-                const createdResult = await createOrganization(targetUserId, {
-                  name: pending.orgName || (organizerName ? `${organizerName}'s Agency` : 'My Organization'),
-                  type: (pending.orgType === 'Event Agency' ? 'AGENCY' : pending.orgType === 'Registered Business' ? 'BUSINESS' : 'INDIVIDUAL') as any,
-                  country: pending.country || 'Nigeria',
-                  phone_number: pending.phoneNumber || '',
-                });
-                if (createdResult.success && createdResult.organization && isValidUUID(createdResult.organization.id)) {
-                  fetchedOrgs = [createdResult.organization];
-                  roles[createdResult.organization.id] = 'OWNER';
-                  localStorage.removeItem(pendingKey);
+                if (pending.orgName) orgName = pending.orgName;
+                if (pending.orgType) {
+                  orgType = pending.orgType === 'Event Agency' ? 'AGENCY' : pending.orgType === 'Registered Business' ? 'BUSINESS' : 'INDIVIDUAL';
                 }
+                if (pending.country) orgCountry = pending.country;
+                if (pending.phoneNumber) orgPhone = pending.phoneNumber;
               } catch (parseErr) {
                 console.warn('Pending organization parse error:', parseErr);
               }
+            }
+
+            try {
+              const createdResult = await createOrganization(targetUserId, {
+                name: orgName,
+                type: orgType,
+                country: orgCountry,
+                phone_number: orgPhone,
+              });
+
+              if (createdResult.success && createdResult.organization && isValidUUID(createdResult.organization.id)) {
+                fetchedOrgs = [createdResult.organization];
+                roles[createdResult.organization.id] = 'OWNER';
+                if (pendingRaw) {
+                  localStorage.removeItem(pendingKey);
+                }
+              }
+            } catch (createErr) {
+              console.error('Failed to auto-provision organizer organization:', createErr);
             }
           }
         } catch (dbErr) {

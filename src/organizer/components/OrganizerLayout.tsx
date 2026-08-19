@@ -2,8 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   LayoutDashboard,
   Calendar,
+  ShoppingBag,
   Ticket,
-  QrCode,
+  TrendingUp,
+  Users,
   Settings,
   Plus,
   ChevronDown,
@@ -12,8 +14,8 @@ import {
   CheckCircle2,
   Search,
   Bell,
-  TrendingUp,
   X,
+  User,
 } from 'lucide-react';
 import { Organization } from '../../types/database';
 import { useAuth } from '../../context/AuthContext';
@@ -21,9 +23,10 @@ import { useAuth } from '../../context/AuthContext';
 export type OrganizerTab =
   | 'overview'
   | 'events'
-  | 'analytics'
   | 'orders'
-  | 'scanner'
+  | 'tickets'
+  | 'analytics'
+  | 'team'
   | 'settings';
 
 interface OrganizerLayoutProps {
@@ -31,7 +34,6 @@ interface OrganizerLayoutProps {
   activeOrg: Organization | null;
   onSelectOrg: (org: Organization) => void;
   onOpenCreateOrg: () => void;
-  onOpenCreateEvent?: () => void;
   activeTab: OrganizerTab;
   onTabChange: (tab: OrganizerTab) => void;
   onSwitchToAttendee?: () => void;
@@ -48,7 +50,6 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
   activeOrg,
   onSelectOrg,
   onOpenCreateOrg,
-  onOpenCreateEvent,
   activeTab,
   onTabChange,
   subpageTitle,
@@ -59,24 +60,30 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
 }) => {
   const { user, signOut } = useAuth();
   const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
 
   const navItems = [
     { id: 'overview' as OrganizerTab, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'events' as OrganizerTab, label: 'Events', icon: Calendar },
+    { id: 'orders' as OrganizerTab, label: 'Orders', icon: ShoppingBag },
+    { id: 'tickets' as OrganizerTab, label: 'Tickets', icon: Ticket },
     { id: 'analytics' as OrganizerTab, label: 'Analytics', icon: TrendingUp },
-    { id: 'orders' as OrganizerTab, label: 'Ticket Sales', icon: Ticket },
-    { id: 'scanner' as OrganizerTab, label: 'Check-Ins', icon: QrCode },
+    { id: 'team' as OrganizerTab, label: 'Team & Permissions', icon: Users },
     { id: 'settings' as OrganizerTab, label: 'Settings', icon: Settings },
   ];
 
-  // Close search results when clicked outside
+  // Close menus when clicked outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setIsSearchOpen(false);
+      }
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setIsProfileMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -147,7 +154,7 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
                     {activeOrg?.name || user?.fullName || 'My Organization'}
                   </span>
                   <span className="block text-[10px] text-slate-400 uppercase tracking-wider font-medium">
-                    {activeOrg?.type || 'ORGANIZER'}
+                    {activeOrg?.type || 'ORGANIZER'} • {activeOrg?.country || 'Nigeria'}
                   </span>
                 </div>
               </div>
@@ -222,7 +229,7 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
                   {user.fullName || activeOrg?.name || 'Organizer'}
                 </span>
                 <span className="block text-[10px] text-[#00b894] uppercase font-bold tracking-wider">
-                  ORGANIZER ADMIN
+                  OWNER
                 </span>
               </div>
               <button
@@ -264,7 +271,7 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
                     setSearchQuery(e.target.value);
                     setIsSearchOpen(true);
                   }}
-                  placeholder="Q Search events, orders, attendees..."
+                  placeholder="Search events, orders, tickets..."
                   className="w-full bg-slate-900/90 border border-slate-800 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#00b894] transition-colors"
                 />
                 {searchQuery && (
@@ -306,7 +313,7 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
                     {matchingOrders.length > 0 && (
                       <div className="border-t border-slate-800 pt-1">
                         <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider px-2 py-1">
-                          Orders &amp; Attendees ({matchingOrders.length})
+                          Orders ({matchingOrders.length})
                         </div>
                         {matchingOrders.map((ord) => (
                           <button
@@ -338,33 +345,79 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
 
           {/* Header Right Actions */}
           <div className="flex items-center space-x-3 sm:space-x-4 flex-shrink-0">
-            {/* Quick Create Event Button */}
-            {onOpenCreateEvent && (
-              <button
-                onClick={onOpenCreateEvent}
-                className="hidden sm:flex items-center space-x-1.5 bg-[#00b894] hover:bg-[#00a383] text-white px-3.5 py-2 rounded-xl text-xs font-extrabold shadow-md shadow-[#00b894]/20 transition-all cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                <span>Create Event</span>
-              </button>
-            )}
-
             {/* Notification Bell */}
-            <button className="relative p-2 bg-slate-900/90 border border-slate-800 rounded-xl text-slate-300 hover:text-white transition-colors cursor-pointer">
-              <Bell className="w-4 h-4" />
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-400 text-slate-950 text-[10px] font-black rounded-full flex items-center justify-center">
-                3
-              </span>
-            </button>
+            <div className="relative">
+              <button 
+                title="Notifications"
+                className="relative p-2 bg-slate-900/90 border border-slate-800 rounded-xl text-slate-300 hover:text-white transition-colors cursor-pointer"
+              >
+                <Bell className="w-4 h-4" />
+              </button>
+            </div>
 
-            {/* Profile Pill */}
-            <div className="flex items-center space-x-2.5 bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-1.5">
-              <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-[#00b894] font-bold text-xs flex items-center justify-center border border-[#00b894]/30">
-                {activeOrg?.name ? activeOrg.name.charAt(0).toUpperCase() : (user?.fullName ? user.fullName.charAt(0).toUpperCase() : 'O')}
-              </div>
-              <span className="text-xs font-bold text-white hidden sm:inline-block max-w-[130px] truncate">
-                {activeOrg?.name || user?.fullName || 'Organizer'}
-              </span>
+            {/* Profile Menu */}
+            <div className="relative" ref={profileMenuRef}>
+              <button
+                onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                className="flex items-center space-x-2.5 bg-slate-900/90 hover:bg-slate-800 border border-slate-800 rounded-xl px-3 py-1.5 transition-colors cursor-pointer"
+              >
+                <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-[#00b894] font-bold text-xs flex items-center justify-center border border-[#00b894]/30">
+                  {activeOrg?.name ? activeOrg.name.charAt(0).toUpperCase() : (user?.fullName ? user.fullName.charAt(0).toUpperCase() : 'O')}
+                </div>
+                <div className="text-left hidden sm:block max-w-[130px]">
+                  <span className="text-xs font-bold text-white block truncate">
+                    {user?.fullName || activeOrg?.name || 'Organizer'}
+                  </span>
+                  <span className="text-[10px] text-[#00b894] font-medium block uppercase tracking-wider">
+                    OWNER
+                  </span>
+                </div>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
+              </button>
+
+              {/* Profile Menu Dropdown */}
+              {isProfileMenuOpen && (
+                <div className="absolute right-0 top-12 w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 py-1">
+                  <div className="px-3.5 py-2.5 border-b border-slate-800">
+                    <p className="text-xs font-bold text-white truncate">{user?.fullName || 'Organizer User'}</p>
+                    <p className="text-[11px] text-slate-400 truncate">{user?.email}</p>
+                    <span className="inline-block mt-1 text-[9px] font-black bg-[#00b894]/20 text-[#00b894] px-1.5 py-0.5 rounded uppercase">
+                      ORGANIZER • OWNER
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setIsProfileMenuOpen(false);
+                      onTabChange('settings');
+                    }}
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center space-x-2 transition-colors cursor-pointer"
+                  >
+                    <Settings className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Organization Settings</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsProfileMenuOpen(false);
+                      onTabChange('team');
+                    }}
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center space-x-2 transition-colors cursor-pointer"
+                  >
+                    <Users className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Team &amp; Permissions</span>
+                  </button>
+                  <div className="border-t border-slate-800 my-1"></div>
+                  <button
+                    onClick={() => {
+                      setIsProfileMenuOpen(false);
+                      signOut();
+                    }}
+                    className="w-full text-left px-3.5 py-2 text-xs text-rose-400 hover:bg-rose-950/40 flex items-center space-x-2 transition-colors cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
