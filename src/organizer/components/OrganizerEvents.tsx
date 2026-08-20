@@ -58,32 +58,28 @@ export const OrganizerEvents: React.FC<OrganizerEventsProps> = ({
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Compute real metrics from events array
+  // Compute real metrics from events array (accurately prioritizing aggregated event sales)
   const totalEventsCount = events.length;
   const activeEventsCount = events.filter(
     (e) => e.status === 'PUBLISHED' || e.status === 'ACTIVE' || !e.status
   ).length;
 
   const totalTicketsSoldCount = events.reduce((acc, evt) => {
-    if (!evt.ticket_types || !Array.isArray(evt.ticket_types)) {
-      return acc + (Number(evt.total_sold) || 0);
-    }
-    const evtSold = evt.ticket_types.reduce(
+    const ttSold = (evt.ticket_types || []).reduce(
       (sub: number, tt: any) => sub + (Number(tt.quantity_sold) || 0),
       0
     );
+    const evtSold = Math.max(Number(evt.total_sold) || 0, ttSold);
     return acc + evtSold;
   }, 0);
 
   const totalNetRevenue = events.reduce((acc, evt) => {
-    if (!evt.ticket_types || !Array.isArray(evt.ticket_types)) {
-      return acc + (Number(evt.revenue) || 0);
-    }
-    const evtRev = evt.ticket_types.reduce(
+    const ttRev = (evt.ticket_types || []).reduce(
       (sub: number, tt: any) =>
         sub + (Number(tt.quantity_sold) || 0) * (Number(tt.price) || 0),
       0
     );
+    const evtRev = Math.max(Number(evt.revenue) || 0, ttRev);
     return acc + evtRev;
   }, 0);
 

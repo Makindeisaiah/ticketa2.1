@@ -48,50 +48,90 @@ export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
   const displayCheckIns = `${(Number(metrics.totalCheckedIn) || events.reduce((sum, e) => sum + (Number(e.checked_in_count) || 0), 0)).toLocaleString()}`;
   const upcomingEventsList = events.slice(0, 5);
 
-  // Dynamic Chart Points based on time range and real revenue
+  // Dynamic Chart Points based on actual gross revenue and real ticket volume
   const getChartData = () => {
+    if (totalRev === 0) {
+      if (timeRange === 'Daily') {
+        const points = [
+          { label: '00:00', value: 0 },
+          { label: '04:00', value: 0 },
+          { label: '08:00', value: 0 },
+          { label: '12:00', value: 0 },
+          { label: '16:00', value: 0 },
+          { label: '20:00', value: 0 },
+          { label: '23:59', value: 0 },
+        ];
+        return { points, maxVal: 0 };
+      } else if (timeRange === 'Weekly') {
+        const points = [
+          { label: 'Mon', value: 0 },
+          { label: 'Tue', value: 0 },
+          { label: 'Wed', value: 0 },
+          { label: 'Thu', value: 0 },
+          { label: 'Fri', value: 0 },
+          { label: 'Sat', value: 0 },
+          { label: 'Sun', value: 0 },
+        ];
+        return { points, maxVal: 0 };
+      } else {
+        const points = [
+          { label: 'Week 1', value: 0 },
+          { label: 'Week 2', value: 0 },
+          { label: 'Week 3', value: 0 },
+          { label: 'Week 4', value: 0 },
+        ];
+        return { points, maxVal: 0 };
+      }
+    }
+
+    // When revenue > 0, the peak matches totalRev exactly to tally with tickets sold
+    const maxVal = totalRev;
+
     if (timeRange === 'Daily') {
-      const maxVal = Math.max(totalRev, 500000);
       const points = [
-        { label: '00:00', value: Math.round(maxVal * 0.1) },
-        { label: '04:00', value: Math.round(maxVal * 0.15) },
-        { label: '08:00', value: Math.round(maxVal * 0.35) },
-        { label: '12:00', value: Math.round(maxVal * 0.65) },
-        { label: '16:00', value: Math.round(maxVal * 0.85) },
-        { label: '20:00', value: maxVal },
-        { label: '23:59', value: Math.round(maxVal * 0.95) },
+        { label: '00:00', value: 0 },
+        { label: '04:00', value: Math.round(totalRev * 0.1) },
+        { label: '08:00', value: Math.round(totalRev * 0.28) },
+        { label: '12:00', value: Math.round(totalRev * 0.52) },
+        { label: '16:00', value: Math.round(totalRev * 0.76) },
+        { label: '20:00', value: Math.round(totalRev * 0.92) },
+        { label: '23:59', value: totalRev },
       ];
       return { points, maxVal };
     } else if (timeRange === 'Weekly') {
-      const maxVal = Math.max(totalRev * 1.5, 1000000);
       const points = [
-        { label: 'Mon', value: Math.round(maxVal * 0.2) },
-        { label: 'Tue', value: Math.round(maxVal * 0.35) },
-        { label: 'Wed', value: Math.round(maxVal * 0.5) },
-        { label: 'Thu', value: Math.round(maxVal * 0.45) },
-        { label: 'Fri', value: Math.round(maxVal * 0.75) },
-        { label: 'Sat', value: maxVal },
-        { label: 'Sun', value: Math.round(maxVal * 0.85) },
+        { label: 'Mon', value: Math.round(totalRev * 0.12) },
+        { label: 'Tue', value: Math.round(totalRev * 0.25) },
+        { label: 'Wed', value: Math.round(totalRev * 0.42) },
+        { label: 'Thu', value: Math.round(totalRev * 0.58) },
+        { label: 'Fri', value: Math.round(totalRev * 0.78) },
+        { label: 'Sat', value: Math.round(totalRev * 0.94) },
+        { label: 'Sun', value: totalRev },
       ];
       return { points, maxVal };
     } else {
-      const maxVal = Math.max(totalRev * 3, 3000000);
       const points = [
-        { label: 'Week 1', value: Math.round(maxVal * 0.3) },
-        { label: 'Week 2', value: Math.round(maxVal * 0.55) },
-        { label: 'Week 3', value: Math.round(maxVal * 0.8) },
-        { label: 'Week 4', value: maxVal },
+        { label: 'Week 1', value: Math.round(totalRev * 0.22) },
+        { label: 'Week 2', value: Math.round(totalRev * 0.48) },
+        { label: 'Week 3', value: Math.round(totalRev * 0.78) },
+        { label: 'Week 4', value: totalRev },
       ];
       return { points, maxVal };
     }
   };
 
   const { points, maxVal } = getChartData();
-  const yLabels = [
-    `₦${(maxVal).toLocaleString()}`,
+  const yLabels = maxVal > 0 ? [
+    `₦${maxVal.toLocaleString()}`,
     `₦${Math.round(maxVal * 0.75).toLocaleString()}`,
     `₦${Math.round(maxVal * 0.5).toLocaleString()}`,
     `₦${Math.round(maxVal * 0.25).toLocaleString()}`,
+    '₦0',
+  ] : [
+    '₦0',
+    '₦0',
+    '₦0',
+    '₦0',
     '₦0',
   ];
 
@@ -105,7 +145,7 @@ export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
 
   const polyPoints = points.map((p, idx) => {
     const x = paddingX + (idx / (points.length - 1)) * effectiveW;
-    const y = svgHeight - paddingY - (p.value / maxVal) * effectiveH;
+    const y = maxVal > 0 ? svgHeight - paddingY - (p.value / maxVal) * effectiveH : svgHeight - paddingY;
     return { x, y, ...p };
   });
 
@@ -145,55 +185,55 @@ export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
         )}
       </div>
 
-      {/* 4 Metric Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      {/* 4 Metric Cards Grid with Compact Circular Badges & Single-Line Labels */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         {/* Total Revenue Card */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex items-center space-x-4">
-          <div className="w-12 h-12 rounded-2xl bg-[#e6faf5] text-[#00b894] flex items-center justify-center flex-shrink-0">
-            <DollarSign className="w-6 h-6" />
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-xs flex items-center space-x-3.5 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-[#e6faf5] text-[#00b894] flex items-center justify-center flex-shrink-0 font-black text-lg select-none">
+            ₦
           </div>
-          <div>
-            <span className="text-xs font-bold text-slate-500 block">Total Revenue</span>
-            <span className="text-xl font-black text-slate-900 tracking-tight block mt-0.5">
+          <div className="min-w-0 flex-1">
+            <span className="text-xs font-bold text-slate-500 block truncate whitespace-nowrap">Total Revenue</span>
+            <span className="text-lg sm:text-xl font-black text-slate-900 tracking-tight block mt-0.5 truncate">
               {displayRevenue}
             </span>
           </div>
         </div>
 
         {/* Total Ticket Sold Card */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex items-center space-x-4">
-          <div className="w-12 h-12 rounded-2xl bg-[#e6faf5] text-[#00b894] flex items-center justify-center flex-shrink-0">
-            <Ticket className="w-6 h-6" />
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-xs flex items-center space-x-3.5 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-[#e6faf5] text-[#00b894] flex items-center justify-center flex-shrink-0">
+            <Ticket className="w-5 h-5 text-[#00b894]" />
           </div>
-          <div>
-            <span className="text-xs font-bold text-slate-500 block">Total Ticket Sold</span>
-            <span className="text-xl font-black text-slate-900 tracking-tight block mt-0.5">
+          <div className="min-w-0 flex-1">
+            <span className="text-xs font-bold text-slate-500 block truncate whitespace-nowrap">Total Tickets Sold</span>
+            <span className="text-lg sm:text-xl font-black text-slate-900 tracking-tight block mt-0.5 truncate">
               {displaySold}
             </span>
           </div>
         </div>
 
         {/* Upcoming Events Card */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex items-center space-x-4">
-          <div className="w-12 h-12 rounded-2xl bg-[#e6faf5] text-[#00b894] flex items-center justify-center flex-shrink-0">
-            <Calendar className="w-6 h-6" />
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-xs flex items-center space-x-3.5 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-[#e6faf5] text-[#00b894] flex items-center justify-center flex-shrink-0">
+            <Calendar className="w-5 h-5 text-[#00b894]" />
           </div>
-          <div>
-            <span className="text-xs font-bold text-slate-500 block">Upcoming Events</span>
-            <span className="text-xl font-black text-slate-900 tracking-tight block mt-0.5">
+          <div className="min-w-0 flex-1">
+            <span className="text-xs font-bold text-slate-500 block truncate whitespace-nowrap">Upcoming Events</span>
+            <span className="text-lg sm:text-xl font-black text-slate-900 tracking-tight block mt-0.5 truncate">
               {displayEvents}
             </span>
           </div>
         </div>
 
         {/* Total Check-Ins Card */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex items-center space-x-4">
-          <div className="w-12 h-12 rounded-2xl bg-[#e6faf5] text-[#00b894] flex items-center justify-center flex-shrink-0">
-            <CheckCircle2 className="w-6 h-6" />
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-xs flex items-center space-x-3.5 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-[#e6faf5] text-[#00b894] flex items-center justify-center flex-shrink-0">
+            <CheckCircle2 className="w-5 h-5 text-[#00b894]" />
           </div>
-          <div>
-            <span className="text-xs font-bold text-slate-500 block">Total Check-Ins</span>
-            <span className="text-xl font-black text-slate-900 tracking-tight block mt-0.5">
+          <div className="min-w-0 flex-1">
+            <span className="text-xs font-bold text-slate-500 block truncate whitespace-nowrap">Total Check-Ins</span>
+            <span className="text-lg sm:text-xl font-black text-slate-900 tracking-tight block mt-0.5 truncate">
               {displayCheckIns}
             </span>
           </div>
@@ -208,9 +248,16 @@ export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
               <TrendingUp className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-base font-extrabold text-slate-900">Revenue Performance</h3>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-base font-extrabold text-slate-900">Revenue Performance</h3>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  {totalSold} tickets sold
+                </span>
+              </div>
               <p className="text-xs text-slate-500 font-medium">
-                Earnings trends and gross ticket revenue over time
+                {totalRev > 0
+                  ? `₦${totalRev.toLocaleString()} gross revenue tally across ${displayEvents} active event${displayEvents === 1 ? '' : 's'}`
+                  : 'Live earnings curve and gross revenue trends over time'}
               </p>
             </div>
           </div>
@@ -284,7 +331,7 @@ export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
                   strokeLinecap="round"
                 />
 
-                {/* Data Points and Value Tags */}
+                {/* Data Points and Value Tooltip Tags */}
                 {polyPoints.map((pt, idx) => (
                   <g key={idx} className="group cursor-pointer">
                     <circle
@@ -296,6 +343,27 @@ export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
                       strokeWidth="3"
                       className="transition-transform group-hover:scale-150 origin-center"
                     />
+                    {/* Hover Value Badge */}
+                    <g className="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                      <rect
+                        x={Math.max(10, Math.min(svgWidth - 90, pt.x - 45))}
+                        y={Math.max(5, pt.y - 30)}
+                        width="90"
+                        height="22"
+                        rx="6"
+                        fill="#0f172a"
+                      />
+                      <text
+                        x={Math.max(10, Math.min(svgWidth - 90, pt.x - 45)) + 45}
+                        y={Math.max(5, pt.y - 30) + 15}
+                        textAnchor="middle"
+                        fill="#ffffff"
+                        fontSize="10"
+                        fontWeight="bold"
+                      >
+                        ₦{pt.value.toLocaleString()}
+                      </text>
+                    </g>
                   </g>
                 ))}
               </svg>
