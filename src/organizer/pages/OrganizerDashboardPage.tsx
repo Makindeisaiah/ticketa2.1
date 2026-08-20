@@ -107,12 +107,14 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
     window.addEventListener('ticketa_order_created', handleOrderEvent);
     window.addEventListener('ticketa_order_completed', handleOrderEvent);
     window.addEventListener('ticketa_tickets_updated', handleOrderEvent);
+    window.addEventListener('ticketa_checkin_updated', handleOrderEvent);
     window.addEventListener('storage', handleOrderEvent);
 
     return () => {
       window.removeEventListener('ticketa_order_created', handleOrderEvent);
       window.removeEventListener('ticketa_order_completed', handleOrderEvent);
       window.removeEventListener('ticketa_tickets_updated', handleOrderEvent);
+      window.removeEventListener('ticketa_checkin_updated', handleOrderEvent);
       window.removeEventListener('storage', handleOrderEvent);
     };
   }, [activeOrgId, loadOrgData]);
@@ -192,7 +194,13 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
       )}
 
       {activeTab === 'check-ins' && (
-        <OrganizerCheckIns events={events} userId={user?.id || ''} />
+        <OrganizerCheckIns
+          events={events}
+          attendees={attendees}
+          orders={orders}
+          userId={user?.id || ''}
+          onRefreshMetrics={loadOrgData}
+        />
       )}
 
       {activeTab === 'settings' && (
