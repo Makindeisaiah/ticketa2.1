@@ -21,34 +21,34 @@ export const OrganizerAuditLogs: React.FC<OrganizerAuditLogsProps> = ({ orgId })
   }, [orgId]);
 
   return (
-    <div className="space-y-6">
-      <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-1">
-        <h2 className="text-xl font-bold text-white">Organization Security Audit Trail</h2>
-        <p className="text-xs text-slate-400">
+    <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs space-y-1">
+        <h2 className="text-xl font-extrabold text-slate-900">Organization Security Audit Trail</h2>
+        <p className="text-xs text-slate-500 font-medium">
           Immutable system log records for administrative events, staff scans, and publishing actions
         </p>
       </div>
 
-      <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-xl overflow-x-auto">
+      <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-xs overflow-x-auto">
         {logs.length === 0 ? (
-          <div className="py-12 text-center text-slate-500 text-xs">
+          <div className="py-12 text-center text-slate-400 text-xs font-medium">
             No audit log records recorded yet.
           </div>
         ) : (
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-800 text-slate-400 font-bold uppercase text-[10px]">
+              <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px]">
                 <th className="pb-3 pr-4">Action</th>
                 <th className="pb-3 pr-4">Entity Type</th>
                 <th className="pb-3 pr-4">Actor ID</th>
                 <th className="pb-3">Timestamp</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/50">
+            <tbody className="divide-y divide-slate-100">
               {logs.map((log) => (
-                <tr key={log.id} className="hover:bg-slate-900/50 transition-colors">
-                  <td className="py-3.5 pr-4 font-mono font-bold text-[#00b894]">{log.action}</td>
-                  <td className="py-3.5 pr-4 text-slate-300 font-bold uppercase text-[10px]">
+                <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
+                  <td className="py-3.5 pr-4 font-mono font-extrabold text-[#00b894]">{log.action}</td>
+                  <td className="py-3.5 pr-4 text-slate-700 font-bold uppercase text-[10px]">
                     {log.entity_type}
                   </td>
                   <td className="py-3.5 pr-4 font-mono text-slate-400 text-[10px]">

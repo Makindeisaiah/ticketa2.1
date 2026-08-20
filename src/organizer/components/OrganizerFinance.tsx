@@ -120,19 +120,19 @@ export const OrganizerFinance: React.FC<OrganizerFinanceProps> = ({ orgId, total
   const availableBalance = Math.max(0, totalRevenue - completedPayoutsSum - pendingPayoutsSum);
 
   return (
-    <div className="space-y-6">
-      <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h2 className="text-xl font-bold text-white">Finance &amp; Paystack Settlements</h2>
-          <p className="text-xs text-slate-400">
-            Automated Paystack bank account linking, revenue settlements, and audit tracking
+          <h2 className="text-xl font-extrabold text-slate-900">Finance &amp; Settlements</h2>
+          <p className="text-xs text-slate-500 font-medium">
+            Bank account linking, ticket revenue withdrawals, and settlement tracking
           </p>
         </div>
 
         <div className="flex items-center space-x-3">
           <button
             onClick={() => setIsAddAccountOpen(true)}
-            className="bg-slate-900 hover:bg-slate-800 border border-slate-700 text-white font-bold text-xs px-4 py-3 rounded-xl transition-all flex items-center space-x-2 cursor-pointer"
+            className="bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all flex items-center space-x-2 cursor-pointer"
           >
             <Plus className="w-4 h-4 text-[#00b894]" />
             <span>Add Bank Account</span>
@@ -144,7 +144,7 @@ export const OrganizerFinance: React.FC<OrganizerFinanceProps> = ({ orgId, total
               setIsRequestPayoutOpen(true);
             }}
             disabled={availableBalance <= 0 || payoutAccounts.length === 0}
-            className="bg-[#00b894] hover:bg-[#00a383] text-white font-bold text-xs px-5 py-3 rounded-xl shadow-lg transition-all flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+            className="bg-[#00b894] hover:bg-[#00a383] text-white font-extrabold text-xs px-5 py-2.5 rounded-xl shadow-md shadow-[#00b894]/20 transition-all flex items-center space-x-2 cursor-pointer disabled:opacity-50"
           >
             <Send className="w-4 h-4" />
             <span>Request Payout</span>
@@ -153,55 +153,55 @@ export const OrganizerFinance: React.FC<OrganizerFinanceProps> = ({ orgId, total
       </div>
 
       {successMsg && (
-        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 p-4 rounded-2xl text-xs flex items-center space-x-2">
-          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-2xl text-xs font-bold flex items-center space-x-2">
+          <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-[#00b894]" />
           <span>{successMsg}</span>
         </div>
       )}
 
       {/* Balance Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-2">
-          <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs space-y-2">
+          <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
             Total Event Ticket Revenue
           </span>
-          <span className="text-2xl font-black text-white block">
+          <span className="text-2xl font-black text-slate-900 block">
             ₦{totalRevenue.toLocaleString()}
           </span>
-          <span className="text-[10px] text-emerald-400 font-bold block">Gross Sales via Paystack</span>
+          <span className="text-[11px] text-emerald-600 font-bold block">Gross Sales via Paystack</span>
         </div>
 
-        <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-2">
-          <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs space-y-2">
+          <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
             Available for Withdrawal
           </span>
           <span className="text-2xl font-black text-[#00b894] block">
             ₦{availableBalance.toLocaleString()}
           </span>
-          <span className="text-[10px] text-slate-400 font-bold block">Net available after payouts</span>
+          <span className="text-[11px] text-slate-400 font-bold block">Net available after payouts</span>
         </div>
 
-        <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-2">
-          <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs space-y-2">
+          <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
             Pending / Processed Payouts
           </span>
-          <span className="text-2xl font-black text-amber-400 block">
+          <span className="text-2xl font-black text-amber-600 block">
             ₦{(pendingPayoutsSum + completedPayoutsSum).toLocaleString()}
           </span>
-          <span className="text-[10px] text-slate-400 font-bold block">
+          <span className="text-[11px] text-slate-400 font-bold block">
             {payouts.length} payout request(s)
           </span>
         </div>
       </div>
 
       {/* Bank Accounts Section */}
-      <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-        <h3 className="text-base font-bold text-white border-b border-slate-800 pb-4">
-          Linked Paystack Settlement Accounts ({payoutAccounts.length})
+      <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-xs space-y-4">
+        <h3 className="text-base font-extrabold text-slate-900 border-b border-slate-100 pb-4">
+          Linked Settlement Accounts ({payoutAccounts.length})
         </h3>
 
         {payoutAccounts.length === 0 ? (
-          <p className="text-xs text-slate-500 py-4">
+          <p className="text-xs text-slate-400 py-4 font-medium">
             No bank accounts linked yet. Click "Add Bank Account" to configure payout destination.
           </p>
         ) : (
@@ -209,14 +209,14 @@ export const OrganizerFinance: React.FC<OrganizerFinanceProps> = ({ orgId, total
             {payoutAccounts.map((acc) => (
               <div
                 key={acc.id}
-                className="p-4 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between"
+                className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-center justify-between"
               >
                 <div className="space-y-1">
-                  <span className="text-xs font-bold text-white block">{acc.account_holder_name}</span>
-                  <span className="text-xs font-mono text-[#00b894] block">
+                  <span className="text-xs font-extrabold text-slate-900 block">{acc.account_holder_name}</span>
+                  <span className="text-xs font-mono font-bold text-[#00b894] block">
                     {acc.bank_name} — {acc.account_number}
                   </span>
-                  <span className="text-[10px] uppercase text-slate-400 block">{acc.account_type}</span>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">{acc.account_type}</span>
                 </div>
                 <ShieldCheck className="w-5 h-5 text-[#00b894]" />
               </div>
@@ -226,35 +226,35 @@ export const OrganizerFinance: React.FC<OrganizerFinanceProps> = ({ orgId, total
       </div>
 
       {/* Payout History Table */}
-      <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-        <h3 className="text-base font-bold text-white border-b border-slate-800 pb-4">
+      <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-xs space-y-4">
+        <h3 className="text-base font-extrabold text-slate-900 border-b border-slate-100 pb-4">
           Payout History ({payouts.length})
         </h3>
 
         {payouts.length === 0 ? (
-          <p className="text-xs text-slate-500 py-4">No payout requests submitted yet.</p>
+          <p className="text-xs text-slate-400 py-4 font-medium">No payout requests submitted yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-slate-800 text-slate-400 font-bold uppercase text-[10px]">
+                <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px]">
                   <th className="pb-3">Reference</th>
                   <th className="pb-3">Amount</th>
                   <th className="pb-3">Status</th>
                   <th className="pb-3">Requested At</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/50">
+              <tbody className="divide-y divide-slate-100">
                 {payouts.map((po) => (
                   <tr key={po.id}>
-                    <td className="py-3 font-mono font-bold text-white">{po.reference}</td>
-                    <td className="py-3 font-bold text-[#00b894]">₦{Number(po.amount).toLocaleString()}</td>
+                    <td className="py-3 font-mono font-bold text-slate-900">{po.reference}</td>
+                    <td className="py-3 font-black text-[#00b894]">₦{Number(po.amount).toLocaleString()}</td>
                     <td className="py-3">
                       <span
                         className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
                           po.status === 'PAID'
-                            ? 'bg-emerald-500/10 text-emerald-400'
-                            : 'bg-amber-500/10 text-amber-400'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200'
                         }`}
                       >
                         {po.status}
@@ -271,27 +271,27 @@ export const OrganizerFinance: React.FC<OrganizerFinanceProps> = ({ orgId, total
 
       {/* Add Bank Account Modal */}
       {isAddAccountOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl relative text-slate-100">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl relative text-slate-900">
             <button
               onClick={() => setIsAddAccountOpen(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <h3 className="text-lg font-bold text-white">Add Bank Account</h3>
+            <h3 className="text-lg font-black text-slate-900">Add Bank Account</h3>
 
             {errorMsg && (
-              <div className="bg-rose-500/10 text-rose-300 p-3 rounded-xl text-xs flex items-center space-x-2">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-xl text-xs flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600" />
                 <span>{errorMsg}</span>
               </div>
             )}
 
             <form onSubmit={handleAddAccountSubmit} className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Account Holder Name</label>
+                <label className="block text-slate-700 font-bold mb-1">Account Holder Name</label>
                 <input
                   type="text"
                   required
@@ -300,16 +300,16 @@ export const OrganizerFinance: React.FC<OrganizerFinanceProps> = ({ orgId, total
                   onChange={(e) =>
                     setAccountForm({ ...accountForm, account_holder_name: e.target.value })
                   }
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white text-xs outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-xs outline-hidden focus:border-[#00b894]"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Bank Name</label>
+                <label className="block text-slate-700 font-bold mb-1">Bank Name</label>
                 <select
                   value={accountForm.bank_name}
                   onChange={(e) => setAccountForm({ ...accountForm, bank_name: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white text-xs outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-xs outline-hidden focus:border-[#00b894]"
                 >
                   <option value="Access Bank">Access Bank</option>
                   <option value="GTBank">Guaranty Trust Bank (GTB)</option>
@@ -322,7 +322,7 @@ export const OrganizerFinance: React.FC<OrganizerFinanceProps> = ({ orgId, total
               </div>
 
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Account Number (10 Digits)</label>
+                <label className="block text-slate-700 font-bold mb-1">Account Number (10 Digits)</label>
                 <input
                   type="text"
                   required
@@ -332,13 +332,13 @@ export const OrganizerFinance: React.FC<OrganizerFinanceProps> = ({ orgId, total
                   onChange={(e) =>
                     setAccountForm({ ...accountForm, account_number: e.target.value })
                   }
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white text-xs outline-none font-mono font-bold"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-xs outline-hidden font-mono font-bold focus:border-[#00b894]"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-bold py-3 rounded-xl shadow-lg mt-2 cursor-pointer"
+                className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-extrabold py-3 rounded-xl shadow-md shadow-[#00b894]/20 mt-2 cursor-pointer transition-all"
               >
                 Save &amp; Verify Account
               </button>
@@ -349,24 +349,24 @@ export const OrganizerFinance: React.FC<OrganizerFinanceProps> = ({ orgId, total
 
       {/* Request Payout Modal */}
       {isRequestPayoutOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl relative text-slate-100">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl relative text-slate-900">
             <button
               onClick={() => setIsRequestPayoutOpen(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <h3 className="text-lg font-bold text-white">Request Revenue Settlement</h3>
+            <h3 className="text-lg font-black text-slate-900">Request Revenue Settlement</h3>
 
             <form onSubmit={handleRequestPayoutSubmit} className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Destination Bank Account</label>
+                <label className="block text-slate-700 font-bold mb-1">Destination Bank Account</label>
                 <select
                   value={selectedAccountId}
                   onChange={(e) => setSelectedAccountId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white text-xs outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-900 text-xs outline-hidden focus:border-[#00b894]"
                 >
                   {payoutAccounts.map((acc) => (
                     <option key={acc.id} value={acc.id}>
@@ -377,7 +377,7 @@ export const OrganizerFinance: React.FC<OrganizerFinanceProps> = ({ orgId, total
               </div>
 
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Payout Amount (NGN)</label>
+                <label className="block text-slate-700 font-bold mb-1">Payout Amount (NGN)</label>
                 <input
                   type="number"
                   required
@@ -385,13 +385,13 @@ export const OrganizerFinance: React.FC<OrganizerFinanceProps> = ({ orgId, total
                   max={availableBalance}
                   value={payoutAmount}
                   onChange={(e) => setPayoutAmount(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-[#00b894] font-bold text-base outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-[#00b894] font-black text-base outline-hidden focus:border-[#00b894]"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-bold py-3 rounded-xl shadow-lg mt-2 cursor-pointer"
+                className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-extrabold py-3 rounded-xl shadow-md shadow-[#00b894]/20 mt-2 cursor-pointer transition-all"
               >
                 Submit Settlement Request
               </button>

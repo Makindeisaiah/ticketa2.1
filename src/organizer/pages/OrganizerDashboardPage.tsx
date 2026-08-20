@@ -170,7 +170,7 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
       )}
 
       {activeTab === 'tickets' && (
-        <OrganizerTicketSales orders={orders} />
+        <OrganizerTicketSales orders={orders} events={events} />
       )}
 
       {activeTab === 'orders' && (

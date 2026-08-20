@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Plus,
   Search,
@@ -8,7 +8,17 @@ import {
   TrendingUp,
   Ticket,
   Calendar,
+  Settings2,
+  Edit3,
+  DollarSign,
+  Trash2,
+  ArrowUpRight,
+  CheckCircle2,
 } from 'lucide-react';
+import { EditEventModal } from './EditEventModal';
+import { DeleteEventModal } from './DeleteEventModal';
+import { WithdrawEarningsModal } from './WithdrawEarningsModal';
+import { deleteOrganizerEvent } from '../services/organizerService';
 
 interface OrganizerEventsProps {
   events: any[];
@@ -19,24 +29,59 @@ interface OrganizerEventsProps {
 }
 
 export const OrganizerEvents: React.FC<OrganizerEventsProps> = ({
-  events,
+  events = [],
+  orgId,
+  userId,
   onOpenCreateModal,
+  onRefreshEvents,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [openMenuEventId, setOpenMenuEventId] = useState<string | null>(null);
+
+  // Modals state
+  const [selectedEventForEdit, setSelectedEventForEdit] = useState<any | null>(null);
+  const [selectedEventForDelete, setSelectedEventForDelete] = useState<any | null>(null);
+  const [selectedEventForWithdraw, setSelectedEventForWithdraw] = useState<any | null>(null);
+  const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
+
+  // Close menus when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.event-menu-container')) {
+        setOpenMenuEventId(null);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   // Compute real metrics from events array
   const totalEventsCount = events.length;
-  const activeEventsCount = events.filter((e) => e.status === 'PUBLISHED' || e.status === 'ACTIVE' || !e.status).length;
+  const activeEventsCount = events.filter(
+    (e) => e.status === 'PUBLISHED' || e.status === 'ACTIVE' || !e.status
+  ).length;
 
   const totalTicketsSoldCount = events.reduce((acc, evt) => {
-    if (!evt.ticket_types || !Array.isArray(evt.ticket_types)) return acc;
-    const evtSold = evt.ticket_types.reduce((sub: number, tt: any) => sub + (Number(tt.quantity_sold) || 0), 0);
+    if (!evt.ticket_types || !Array.isArray(evt.ticket_types)) {
+      return acc + (Number(evt.total_sold) || 0);
+    }
+    const evtSold = evt.ticket_types.reduce(
+      (sub: number, tt: any) => sub + (Number(tt.quantity_sold) || 0),
+      0
+    );
     return acc + evtSold;
   }, 0);
 
   const totalNetRevenue = events.reduce((acc, evt) => {
-    if (!evt.ticket_types || !Array.isArray(evt.ticket_types)) return acc;
-    const evtRev = evt.ticket_types.reduce((sub: number, tt: any) => sub + ((Number(tt.quantity_sold) || 0) * (Number(tt.price) || 0)), 0);
+    if (!evt.ticket_types || !Array.isArray(evt.ticket_types)) {
+      return acc + (Number(evt.revenue) || 0);
+    }
+    const evtRev = evt.ticket_types.reduce(
+      (sub: number, tt: any) =>
+        sub + (Number(tt.quantity_sold) || 0) * (Number(tt.price) || 0),
+      0
+    );
     return acc + evtRev;
   }, 0);
 
@@ -45,25 +90,38 @@ export const OrganizerEvents: React.FC<OrganizerEventsProps> = ({
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     const titleMatch = evt.title?.toLowerCase().includes(q);
-    const venueMatch = evt.venues?.name?.toLowerCase().includes(q) || evt.venue?.toLowerCase().includes(q);
+    const venueMatch =
+      evt.venues?.name?.toLowerCase().includes(q) ||
+      evt.venue?.toLowerCase().includes(q) ||
+      evt.venue_name?.toLowerCase().includes(q);
     return titleMatch || venueMatch;
   });
+
+  const handleDeleteEventConfirm = async (eventId: string) => {
+    const res = await deleteOrganizerEvent(eventId, orgId);
+    if (!res.success) {
+      throw new Error(res.error || 'Failed to delete event');
+    }
+    setActionSuccessMsg('Event deleted successfully.');
+    setTimeout(() => setActionSuccessMsg(null), 4000);
+    if (onRefreshEvents) onRefreshEvents();
+  };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Events</h1>
-          <p className="text-xs sm:text-sm text-slate-400 font-medium">
-            Manage your organization events and ticketing
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Events</h1>
+          <p className="text-xs sm:text-sm text-slate-500 font-medium">
+            Manage your organization events, ticket tiers, and live gate performance
           </p>
         </div>
 
         {onOpenCreateModal && (
           <button
             onClick={onOpenCreateModal}
-            className="bg-[#00b894] hover:bg-[#00a383] text-white font-black text-xs px-5 py-3.5 rounded-xl shadow-lg shadow-[#00b894]/20 transition-all flex items-center space-x-2 cursor-pointer self-start sm:self-auto"
+            className="bg-[#00b894] hover:bg-[#00a383] text-white font-extrabold text-xs px-5 py-3 rounded-xl shadow-md shadow-[#00b894]/20 transition-all flex items-center space-x-2 cursor-pointer self-start sm:self-auto"
           >
             <Plus className="w-4 h-4" />
             <span>Create New Event</span>
@@ -71,40 +129,55 @@ export const OrganizerEvents: React.FC<OrganizerEventsProps> = ({
         )}
       </div>
 
+      {actionSuccessMsg && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs font-bold flex items-center space-x-2 animate-in fade-in duration-200">
+          <CheckCircle2 className="w-4 h-4 text-[#00b894] flex-shrink-0" />
+          <span>{actionSuccessMsg}</span>
+        </div>
+      )}
+
       {/* 4 Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-1">
-          <span className="text-xs font-semibold text-slate-400 block">Total Event</span>
-          <span className="text-2xl font-black text-white tracking-tight block">{totalEventsCount}</span>
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-1">
+          <span className="text-xs font-bold text-slate-500 block">Total Events</span>
+          <span className="text-2xl font-black text-slate-900 tracking-tight block">
+            {totalEventsCount}
+          </span>
         </div>
 
-        <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-1">
-          <span className="text-xs font-semibold text-slate-400 block">Active Events</span>
-          <span className="text-2xl font-black text-white tracking-tight block">{activeEventsCount}</span>
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-1">
+          <span className="text-xs font-bold text-slate-500 block">Active Events</span>
+          <span className="text-2xl font-black text-[#00b894] tracking-tight block">
+            {activeEventsCount}
+          </span>
         </div>
 
-        <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-1">
-          <span className="text-xs font-semibold text-slate-400 block">Total Ticket Sold</span>
-          <span className="text-2xl font-black text-white tracking-tight block">{totalTicketsSoldCount.toLocaleString()}</span>
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-1">
+          <span className="text-xs font-bold text-slate-500 block">Total Tickets Sold</span>
+          <span className="text-2xl font-black text-slate-900 tracking-tight block">
+            {totalTicketsSoldCount.toLocaleString()}
+          </span>
         </div>
 
-        <div className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-1">
-          <span className="text-xs font-semibold text-slate-400 block">Net Revenue</span>
-          <span className="text-2xl font-black text-white tracking-tight block">₦{totalNetRevenue.toLocaleString()}</span>
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-1">
+          <span className="text-xs font-bold text-slate-500 block">Net Revenue</span>
+          <span className="text-2xl font-black text-slate-900 tracking-tight block">
+            ₦{totalNetRevenue.toLocaleString()}
+          </span>
         </div>
       </div>
 
       {/* Search Input Bar */}
       <div className="relative max-w-md">
-        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
           <Search className="w-4 h-4" />
         </div>
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search events..."
-          className="w-full bg-[#111723]/90 border border-slate-800/80 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#00b894] transition-colors"
+          placeholder="Search events by title or venue..."
+          className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:border-[#00b894] transition-colors shadow-xs"
         />
       </div>
 
@@ -113,119 +186,212 @@ export const OrganizerEvents: React.FC<OrganizerEventsProps> = ({
         {filteredEvents.length > 0 ? (
           filteredEvents.map((evt) => {
             const ticketTypes = evt.ticket_types || [];
-            const totalAvail = ticketTypes.reduce((s: number, t: any) => s + (Number(t.quantity_available) || 0), 0);
-            const totalSold = ticketTypes.reduce((s: number, t: any) => s + (Number(t.quantity_sold) || 0), 0);
+            const totalAvail = ticketTypes.reduce(
+              (s: number, t: any) => s + (Number(t.quantity_available) || 0),
+              0
+            );
+            const totalSold = ticketTypes.reduce(
+              (s: number, t: any) => s + (Number(t.quantity_sold) || 0),
+              0
+            );
             const totalCapacity = totalAvail + totalSold;
-            const progressVal = totalCapacity > 0 ? Math.round((totalSold / totalCapacity) * 100) : 0;
-            const eventRevenue = ticketTypes.reduce((s: number, t: any) => s + ((Number(t.quantity_sold) || 0) * (Number(t.price) || 0)), 0);
+            // Accurate progress bar percentage
+            const progressVal =
+              totalCapacity > 0
+                ? Math.min(100, Math.round((totalSold / totalCapacity) * 100))
+                : evt.progress_val || 0;
 
-            const isFastSelling = progressVal >= 70;
-            const isAverageSelling = progressVal >= 30 && progressVal < 70;
+            const eventRevenue = ticketTypes.reduce(
+              (s: number, t: any) =>
+                s + (Number(t.quantity_sold) || 0) * (Number(t.price) || 0),
+              0
+            );
+
+            const isFastSelling = progressVal >= 60;
+            const isAverageSelling = progressVal >= 20 && progressVal < 60;
+            const isMenuOpen = openMenuEventId === evt.id;
 
             return (
               <div
                 key={evt.id}
-                className="bg-[#111723]/90 border border-slate-800/80 rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-slate-700/80 transition-all"
+                className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-5 hover:border-slate-300 transition-all relative"
               >
                 {/* Event Image & Main Info */}
                 <div className="flex items-center space-x-4 flex-1 min-w-0">
                   <img
-                    src={evt.banner_image_url || evt.image || 'https://images.unsplash.com/photo-1540039155733-5bb30b53aa14?auto=format&fit=crop&q=80&w=600'}
+                    src={
+                      evt.banner_image_url ||
+                      evt.image ||
+                      'https://images.unsplash.com/photo-1540039155733-5bb30b53aa14?auto=format&fit=crop&q=80&w=600'
+                    }
                     alt={evt.title}
-                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-cover border border-slate-800 flex-shrink-0"
+                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border border-slate-200 flex-shrink-0 shadow-xs"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
                   />
-                  <div className="space-y-1 truncate">
-                    <h3 className="font-black text-white text-base truncate">{evt.title}</h3>
-                    <p className="text-xs text-slate-400 font-medium truncate">
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <h3 className="font-black text-slate-900 text-base truncate">{evt.title}</h3>
+                    <p className="text-xs text-slate-500 font-medium truncate">
                       {evt.start_time
                         ? new Date(evt.start_time).toLocaleString('en-US', {
                             weekday: 'short',
                             day: 'numeric',
                             month: 'short',
+                            year: 'numeric',
                             hour: '2-digit',
                             minute: '2-digit',
                           })
                         : evt.date || 'Date TBD'}
                     </p>
-                    <p className="text-xs text-slate-500 font-normal truncate">
-                      {evt.venues?.name || evt.venue || (evt.is_online ? 'Online Event' : 'Venue TBD')}
+                    <p className="text-xs text-slate-400 font-normal truncate">
+                      {evt.venues?.name || evt.venue || evt.venue_name || (evt.is_online ? 'Online Event' : 'Victoria Island, Lagos')}
                     </p>
                   </div>
                 </div>
 
-                {/* Progress & Status Badges */}
-                <div className="flex flex-wrap md:flex-nowrap items-center gap-6">
+                {/* Progress & Performance Metrics */}
+                <div className="flex flex-wrap lg:flex-nowrap items-center gap-4 sm:gap-6">
                   {/* Progress bar */}
-                  <div className="w-32 space-y-1">
-                    <div className="flex justify-between text-[11px] font-bold text-slate-300">
+                  <div className="w-32 sm:w-36 space-y-1.5 flex-shrink-0">
+                    <div className="flex justify-between text-xs font-bold text-slate-700">
                       <span>Sold</span>
-                      <span>{progressVal}%</span>
+                      <span className="text-[#00b894] font-black">{progressVal}%</span>
                     </div>
-                    <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200/60">
                       <div
-                        className="h-full bg-[#00b894] rounded-full"
-                        style={{ width: `${progressVal}%` }}
+                        className="h-full bg-[#00b894] rounded-full transition-all duration-500"
+                        style={{ width: `${Math.max(5, progressVal)}%` }}
                       />
                     </div>
                   </div>
 
                   {/* Status Tag */}
-                  <span className="px-3 py-1 bg-[#00b894]/15 border border-[#00b894]/30 text-[#00b894] rounded-full text-xs font-bold capitalize">
+                  <span className="px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full text-xs font-extrabold capitalize flex-shrink-0">
                     {evt.status || 'Published'}
                   </span>
 
                   {/* Tickets counts */}
-                  <div className="text-xs font-medium text-slate-300 space-y-0.5 min-w-[120px]">
-                    <div className="font-bold text-white">{totalSold.toLocaleString()} Tickets Sold</div>
-                    <div className="text-slate-400 text-[11px]">{totalAvail.toLocaleString()} Available</div>
+                  <div className="text-xs font-medium text-slate-600 space-y-0.5 min-w-[110px] flex-shrink-0">
+                    <div className="font-extrabold text-slate-900">
+                      {totalSold.toLocaleString()} Sold
+                    </div>
+                    <div className="text-slate-400 text-[11px]">
+                      {totalAvail.toLocaleString()} Available
+                    </div>
                   </div>
 
-                  {/* Sales Tag */}
+                  {/* Velocity badge */}
                   <span
-                    className={`px-3 py-1 rounded-full text-xs font-black flex items-center space-x-1 ${
+                    className={`px-3 py-1 rounded-full text-xs font-extrabold flex items-center space-x-1 flex-shrink-0 ${
                       isFastSelling
-                        ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
+                        ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
                         : isAverageSelling
-                        ? 'bg-amber-500/15 border border-amber-500/30 text-amber-400'
-                        : 'bg-slate-800 border border-slate-700 text-slate-400'
+                        ? 'bg-amber-50 border border-amber-200 text-amber-800'
+                        : 'bg-slate-100 border border-slate-200 text-slate-600'
                     }`}
                   >
-                    <span>{isFastSelling ? '⚡' : isAverageSelling ? '📈' : '📊'}</span>
-                    <span>{isFastSelling ? 'Selling Fast' : isAverageSelling ? 'Average Sales' : 'Standard'}</span>
+                    <span>{isFastSelling ? '⚡ Selling Fast' : isAverageSelling ? '📈 Average Sales' : '📊 Standard'}</span>
                   </span>
 
                   {/* Revenue */}
-                  <div className="text-right min-w-[120px]">
-                    <span className="text-xs text-slate-400 block font-medium">Revenue</span>
-                    <span className="text-sm font-black text-white block">₦{eventRevenue.toLocaleString()}</span>
+                  <div className="text-right min-w-[110px] flex-shrink-0">
+                    <span className="text-[11px] text-slate-400 block font-bold uppercase tracking-wider">
+                      Revenue
+                    </span>
+                    <span className="text-sm font-black text-slate-900 block">
+                      ₦{eventRevenue.toLocaleString()}
+                    </span>
                   </div>
 
-                  {/* Action buttons */}
-                  <div className="flex items-center space-x-2">
-                    {onOpenCreateModal && (
-                      <button
-                        onClick={() => onOpenCreateModal()}
-                        className="px-3 py-1.5 bg-[#00b894] hover:bg-[#00a383] text-white text-xs font-bold rounded-xl shadow-md transition-colors cursor-pointer"
-                      >
-                        Manage
-                      </button>
-                    )}
-                    <button className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer">
-                      <MoreVertical className="w-4 h-4" />
+                  {/* Action dropdown button */}
+                  <div className="relative event-menu-container flex items-center space-x-2">
+                    <button
+                      onClick={() => setSelectedEventForEdit(evt)}
+                      className="px-3.5 py-2 bg-[#e6faf5] hover:bg-[#d0f5ec] text-[#00b894] text-xs font-extrabold rounded-xl border border-[#a3f0db] transition-colors cursor-pointer"
+                    >
+                      Manage
                     </button>
+
+                    {/* Three dots menu button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenMenuEventId(isMenuOpen ? null : evt.id);
+                      }}
+                      className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                      title="Event Actions"
+                    >
+                      <MoreVertical className="w-5 h-5" />
+                    </button>
+
+                    {/* 4-Item Dropdown Menu */}
+                    {isMenuOpen && (
+                      <div className="absolute right-0 top-11 w-48 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100">
+                        {/* 1. Manage Event */}
+                        <button
+                          onClick={() => {
+                            setOpenMenuEventId(null);
+                            setSelectedEventForEdit(evt);
+                          }}
+                          className="w-full text-left px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center space-x-2.5 transition-colors cursor-pointer"
+                        >
+                          <Settings2 className="w-4 h-4 text-slate-400" />
+                          <span>Manage Event</span>
+                        </button>
+
+                        {/* 2. Edit Event */}
+                        <button
+                          onClick={() => {
+                            setOpenMenuEventId(null);
+                            setSelectedEventForEdit(evt);
+                          }}
+                          className="w-full text-left px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center space-x-2.5 transition-colors cursor-pointer"
+                        >
+                          <Edit3 className="w-4 h-4 text-[#00b894]" />
+                          <span>Edit Event</span>
+                        </button>
+
+                        {/* 3. Withdraw Earnings */}
+                        <button
+                          onClick={() => {
+                            setOpenMenuEventId(null);
+                            setSelectedEventForWithdraw(evt);
+                          }}
+                          className="w-full text-left px-4 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 flex items-center space-x-2.5 transition-colors cursor-pointer"
+                        >
+                          <ArrowUpRight className="w-4 h-4 text-emerald-600" />
+                          <span>Withdraw Earnings</span>
+                        </button>
+
+                        <div className="border-t border-slate-100 my-1" />
+
+                        {/* 4. Delete Events */}
+                        <button
+                          onClick={() => {
+                            setOpenMenuEventId(null);
+                            setSelectedEventForDelete(evt);
+                          }}
+                          className="w-full text-left px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 flex items-center space-x-2.5 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4 text-rose-500" />
+                          <span>Delete Event</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             );
           })
         ) : (
-          <div className="text-center py-16 px-4 bg-[#111723]/90 border border-slate-800/80 rounded-2xl space-y-4">
-            <Calendar className="w-12 h-12 text-slate-500 mx-auto" />
+          <div className="text-center py-16 px-4 bg-white border border-slate-200/90 rounded-3xl space-y-4">
+            <Calendar className="w-12 h-12 text-slate-400 mx-auto" />
             <div>
-              <h3 className="text-base font-bold text-white mb-1">
+              <h3 className="text-base font-bold text-slate-800 mb-1">
                 {searchQuery ? 'No matching events found' : 'No events created yet'}
               </h3>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
                 {searchQuery
                   ? `No events matching "${searchQuery}". Try a different keyword.`
                   : 'Start by creating your first event to publish tickets, manage attendees, and track revenue.'}
@@ -234,7 +400,7 @@ export const OrganizerEvents: React.FC<OrganizerEventsProps> = ({
             {!searchQuery && onOpenCreateModal && (
               <button
                 onClick={onOpenCreateModal}
-                className="px-5 py-2.5 bg-[#00b894] hover:bg-[#00a383] text-white font-extrabold text-xs rounded-xl shadow-lg shadow-[#00b894]/20 transition-all inline-flex items-center space-x-2 cursor-pointer"
+                className="px-5 py-2.5 bg-[#00b894] hover:bg-[#00a383] text-white font-extrabold text-xs rounded-xl shadow-md shadow-[#00b894]/20 transition-all inline-flex items-center space-x-2 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Create Your First Event</span>
@@ -247,22 +413,60 @@ export const OrganizerEvents: React.FC<OrganizerEventsProps> = ({
       {/* Pagination Footer */}
       {filteredEvents.length > 0 && (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
-          <span className="text-xs text-slate-400 font-medium">
-            Showing 1 to {filteredEvents.length} of {filteredEvents.length}
+          <span className="text-xs text-slate-500 font-medium">
+            Showing {filteredEvents.length} of {events.length} events
           </span>
-
           <div className="flex items-center space-x-2">
-            <button className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer">
+            <button
+              disabled
+              className="p-2 bg-slate-100 border border-slate-200 rounded-xl text-slate-400 cursor-not-allowed"
+            >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <button className="w-8 h-8 rounded-xl bg-[#00b894] text-white font-black text-xs flex items-center justify-center cursor-pointer">
-              1
-            </button>
-            <button className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer">
+            <span className="text-xs font-bold text-slate-700 px-2">Page 1 of 1</span>
+            <button
+              disabled
+              className="p-2 bg-slate-100 border border-slate-200 rounded-xl text-slate-400 cursor-not-allowed"
+            >
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </div>
+      )}
+
+      {/* Modals */}
+      {selectedEventForEdit && (
+        <EditEventModal
+          event={selectedEventForEdit}
+          isOpen={Boolean(selectedEventForEdit)}
+          onClose={() => setSelectedEventForEdit(null)}
+          onSuccess={() => {
+            setSelectedEventForEdit(null);
+            setActionSuccessMsg('Event details updated successfully!');
+            setTimeout(() => setActionSuccessMsg(null), 4000);
+            if (onRefreshEvents) onRefreshEvents();
+          }}
+        />
+      )}
+
+      {selectedEventForDelete && (
+        <DeleteEventModal
+          event={selectedEventForDelete}
+          isOpen={Boolean(selectedEventForDelete)}
+          onClose={() => setSelectedEventForDelete(null)}
+          onConfirmDelete={handleDeleteEventConfirm}
+        />
+      )}
+
+      {selectedEventForWithdraw && (
+        <WithdrawEarningsModal
+          event={selectedEventForWithdraw}
+          isOpen={Boolean(selectedEventForWithdraw)}
+          onClose={() => setSelectedEventForWithdraw(null)}
+          onSuccess={() => {
+            if (onRefreshEvents) onRefreshEvents();
+          }}
+        />
       )}
     </div>
   );

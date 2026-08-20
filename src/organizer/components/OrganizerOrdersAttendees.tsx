@@ -7,23 +7,23 @@ interface OrganizerOrdersAttendeesProps {
 }
 
 export const OrganizerOrdersAttendees: React.FC<OrganizerOrdersAttendeesProps> = ({
-  orders,
-  attendees,
+  orders = [],
+  attendees = [],
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'ORDERS' | 'ATTENDEES'>('ORDERS');
   const [searchTerm, setSearchTerm] = useState('');
 
-  const filteredOrders = orders.filter((o) => {
+  const filteredOrders = (orders || []).filter((o) => {
     const term = searchTerm.toLowerCase();
     return (
-      o.id.toLowerCase().includes(term) ||
+      o.id?.toLowerCase().includes(term) ||
       o.customer_name?.toLowerCase().includes(term) ||
       o.customer_email?.toLowerCase().includes(term) ||
       o.event_title?.toLowerCase().includes(term)
     );
   });
 
-  const filteredAttendees = attendees.filter((a) => {
+  const filteredAttendees = (attendees || []).filter((a) => {
     const term = searchTerm.toLowerCase();
     return (
       a.ticket_code?.toLowerCase().includes(term) ||
@@ -34,25 +34,25 @@ export const OrganizerOrdersAttendees: React.FC<OrganizerOrdersAttendeesProps> =
   });
 
   return (
-    <div className="space-y-6">
-      <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center space-x-2 bg-slate-900 border border-slate-800 p-1.5 rounded-2xl">
+    <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center space-x-2 bg-slate-100 border border-slate-200 p-1.5 rounded-2xl">
           <button
             onClick={() => setActiveSubTab('ORDERS')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
               activeSubTab === 'ORDERS'
-                ? 'bg-[#00b894] text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Orders History ({orders.length})
           </button>
           <button
             onClick={() => setActiveSubTab('ATTENDEES')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
               activeSubTab === 'ATTENDEES'
-                ? 'bg-[#00b894] text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Issued Tickets &amp; Attendees ({attendees.length})
@@ -60,25 +60,25 @@ export const OrganizerOrdersAttendees: React.FC<OrganizerOrdersAttendeesProps> =
         </div>
 
         <div className="relative max-w-xs w-full">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3 pointer-events-none" />
           <input
             type="text"
             placeholder="Search by name, email, code..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white outline-none focus:border-[#00b894]"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 placeholder-slate-400 outline-hidden focus:border-[#00b894] transition-colors"
           />
         </div>
       </div>
 
       {activeSubTab === 'ORDERS' ? (
-        <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-xl overflow-x-auto">
+        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-xs overflow-x-auto">
           {filteredOrders.length === 0 ? (
-            <div className="py-12 text-center text-slate-500 text-xs">No orders record found.</div>
+            <div className="py-12 text-center text-slate-400 text-xs font-medium">No orders record found.</div>
           ) : (
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-slate-800 text-slate-400 font-bold uppercase text-[10px]">
+                <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px]">
                   <th className="pb-3 pr-4">Order Ref</th>
                   <th className="pb-3 pr-4">Customer</th>
                   <th className="pb-3 pr-4">Event</th>
@@ -87,30 +87,30 @@ export const OrganizerOrdersAttendees: React.FC<OrganizerOrdersAttendeesProps> =
                   <th className="pb-3">Date</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/50">
+              <tbody className="divide-y divide-slate-100">
                 {filteredOrders.map((ord) => (
-                  <tr key={ord.id} className="hover:bg-slate-900/50 transition-colors">
-                    <td className="py-3.5 pr-4 font-mono font-bold text-white">{ord.id.slice(0, 8)}...</td>
+                  <tr key={ord.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="py-3.5 pr-4 font-mono font-extrabold text-slate-900">{ord.id.slice(0, 8)}...</td>
                     <td className="py-3.5 pr-4">
-                      <span className="block font-bold text-slate-200">{ord.customer_name}</span>
-                      <span className="block text-[10px] text-slate-400">{ord.customer_email}</span>
+                      <span className="block font-extrabold text-slate-900">{ord.customer_name}</span>
+                      <span className="block text-[11px] text-slate-400">{ord.customer_email}</span>
                     </td>
-                    <td className="py-3.5 pr-4 font-bold text-slate-300">{ord.event_title}</td>
-                    <td className="py-3.5 pr-4 font-bold text-[#00b894]">
+                    <td className="py-3.5 pr-4 font-bold text-slate-700">{ord.event_title}</td>
+                    <td className="py-3.5 pr-4 font-black text-[#00b894]">
                       ₦{Number(ord.total_amount).toLocaleString()}
                     </td>
                     <td className="py-3.5 pr-4">
                       <span
                         className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
-                          ord.status === 'PAID'
-                            ? 'bg-emerald-500/10 text-emerald-400'
-                            : 'bg-amber-500/10 text-amber-400'
+                          ord.status === 'PAID' || ord.status === 'COMPLETED'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200'
                         }`}
                       >
-                        {ord.status}
+                        {ord.status || 'Paid'}
                       </span>
                     </td>
-                    <td className="py-3.5 text-slate-400">{new Date(ord.created_at).toLocaleDateString()}</td>
+                    <td className="py-3.5 text-slate-400">{new Date(ord.created_at || Date.now()).toLocaleDateString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -118,13 +118,13 @@ export const OrganizerOrdersAttendees: React.FC<OrganizerOrdersAttendeesProps> =
           )}
         </div>
       ) : (
-        <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-xl overflow-x-auto">
+        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-7 shadow-xs overflow-x-auto">
           {filteredAttendees.length === 0 ? (
-            <div className="py-12 text-center text-slate-500 text-xs">No issued tickets found.</div>
+            <div className="py-12 text-center text-slate-400 text-xs font-medium">No issued tickets found.</div>
           ) : (
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-slate-800 text-slate-400 font-bold uppercase text-[10px]">
+                <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px]">
                   <th className="pb-3 pr-4">Ticket Code</th>
                   <th className="pb-3 pr-4">Attendee</th>
                   <th className="pb-3 pr-4">Event</th>
@@ -133,28 +133,28 @@ export const OrganizerOrdersAttendees: React.FC<OrganizerOrdersAttendeesProps> =
                   <th className="pb-3">Issued Date</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/50">
+              <tbody className="divide-y divide-slate-100">
                 {filteredAttendees.map((att) => (
-                  <tr key={att.id} className="hover:bg-slate-900/50 transition-colors">
-                    <td className="py-3.5 pr-4 font-mono font-bold text-[#00b894]">{att.ticket_code}</td>
+                  <tr key={att.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="py-3.5 pr-4 font-mono font-extrabold text-[#00b894]">{att.ticket_code}</td>
                     <td className="py-3.5 pr-4">
-                      <span className="block font-bold text-slate-200">{att.attendee_name}</span>
-                      <span className="block text-[10px] text-slate-400">{att.attendee_email}</span>
+                      <span className="block font-extrabold text-slate-900">{att.attendee_name}</span>
+                      <span className="block text-[11px] text-slate-400">{att.attendee_email}</span>
                     </td>
-                    <td className="py-3.5 pr-4 font-bold text-slate-300">{att.event_title}</td>
-                    <td className="py-3.5 pr-4 font-bold text-slate-400">{att.ticket_type_name}</td>
+                    <td className="py-3.5 pr-4 font-bold text-slate-700">{att.event_title}</td>
+                    <td className="py-3.5 pr-4 font-bold text-slate-500">{att.ticket_type_name}</td>
                     <td className="py-3.5 pr-4">
                       <span
                         className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
                           att.is_checked_in
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : 'bg-slate-800 text-slate-400'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-slate-100 text-slate-600 border border-slate-200'
                         }`}
                       >
-                        {att.is_checked_in ? 'Checked-In' : 'Pending'}
+                        {att.is_checked_in ? 'Checked In' : 'Pending Gate'}
                       </span>
                     </td>
-                    <td className="py-3.5 text-slate-400">{new Date(att.created_at).toLocaleDateString()}</td>
+                    <td className="py-3.5 text-slate-400">{new Date(att.created_at || Date.now()).toLocaleDateString()}</td>
                   </tr>
                 ))}
               </tbody>
