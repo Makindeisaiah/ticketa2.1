@@ -268,7 +268,7 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
       {/* Related Events Section matching Figma */}
       <div className="border-t border-slate-200 pt-10 space-y-6">
         <h2 className="text-xl font-bold text-slate-900 tracking-tight">Related Events</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           {relatedEvents.map((evt) => (
             <EventCard key={evt.id} event={evt} onClick={onSelectEvent} />
           ))}

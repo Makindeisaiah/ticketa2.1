@@ -35,7 +35,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onClick }) => {
       className="group bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-xl transition-all duration-300 flex flex-col cursor-pointer transform hover:-translate-y-1"
     >
       {/* Event Poster Image */}
-      <div className="relative aspect-[3/4] w-full bg-slate-900 overflow-hidden">
+      <div className="relative aspect-[16/10] sm:aspect-[3/4] w-full bg-slate-900 overflow-hidden">
         <img
           src={event.banner_image_url}
           alt={event.title}
