@@ -28,9 +28,9 @@ export const OrganizerApp: React.FC<OrganizerAppProps> = ({
   let initialTab: OrganizerTab = 'overview';
   if (pathname.includes('/organizer/events')) initialTab = 'events';
   else if (pathname.includes('/organizer/analytics')) initialTab = 'analytics';
-  else if (pathname.includes('/organizer/orders') || pathname.includes('/organizer/attendees')) initialTab = 'orders';
   else if (pathname.includes('/organizer/tickets')) initialTab = 'tickets';
-  else if (pathname.includes('/organizer/team')) initialTab = 'team';
+  else if (pathname.includes('/organizer/orders') || pathname.includes('/organizer/attendees') || pathname.includes('/organizer/customers')) initialTab = 'orders';
+  else if (pathname.includes('/organizer/check-ins') || pathname.includes('/organizer/scanner')) initialTab = 'check-ins';
   else if (pathname.includes('/organizer/settings') || pathname.includes('/organizer/finance') || pathname.includes('/organizer/billing')) initialTab = 'settings';
 
   const isAuthRoute = pathname === '/organizer/login' || pathname === '/organizer/signup';

@@ -117,12 +117,13 @@ export const HomePage: React.FC<HomePageProps> = ({ events, onSelectEvent, onNav
                 className="w-full text-xs sm:text-sm bg-transparent outline-none text-slate-800 font-medium cursor-pointer"
               >
                 <option value="all">All Locations</option>
+                <option value="Nigeria">Nigeria</option>
+                <option value="Ghana">Ghana</option>
+                <option value="Côte d’Ivoire">Côte d’Ivoire</option>
                 <option value="Lagos, Nigeria">Lagos, Nigeria</option>
                 <option value="Abuja, Nigeria">Abuja, Nigeria</option>
                 <option value="Accra, Ghana">Accra, Ghana</option>
                 <option value="Abidjan, Côte d’Ivoire">Abidjan, Côte d’Ivoire</option>
-                <option value="Nairobi, Kenya">Nairobi, Kenya</option>
-                <option value="London, United Kingdom">London, United Kingdom</option>
               </select>
             </div>
 

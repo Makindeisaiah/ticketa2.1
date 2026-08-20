@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Calendar,
@@ -7,7 +7,8 @@ import {
   Plus,
   Trash2,
   Globe,
-  Image,
+  Image as ImageIcon,
+  Upload,
   CheckCircle2,
   AlertCircle,
   Tag,
@@ -37,10 +38,13 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
 }) => {
   const { organization, organizationId, organizations } = useOrganizer();
   const { user } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [categories, setCategories] = useState<EventCategory[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const effectiveOrgId = (orgId && isValidUUID(orgId))
     ? orgId
@@ -147,6 +151,29 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
       title: val,
       slug: slug || 'event',
     }));
+  };
+
+  const handleImageFileChange = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setError('Please select a valid image file (PNG, JPG, WEBP).');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Image size exceeds 10MB limit.');
+      return;
+    }
+
+    setError(null);
+    setSelectedFileName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setForm((prev) => ({ ...prev, banner_image_url: reader.result as string }));
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const addTicketType = () => {
@@ -312,14 +339,90 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({
               />
             </div>
 
+            {/* Computer File Upload for Event Banner */}
             <div>
-              <label className="block font-bold text-slate-300 mb-1">Banner Image URL</label>
+              <label className="block font-bold text-slate-300 mb-1.5">
+                Event Banner Image
+              </label>
+
               <input
-                type="url"
-                value={form.banner_image_url}
-                onChange={(e) => setForm({ ...form, banner_image_url: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 focus:border-[#00b894] rounded-xl px-4 py-2.5 text-white text-xs outline-none"
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    handleImageFileChange(e.target.files[0]);
+                  }
+                }}
               />
+
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    handleImageFileChange(e.dataTransfer.files[0]);
+                  }
+                }}
+                className={`border-2 border-dashed rounded-2xl p-4 transition-all ${
+                  isDragging
+                    ? 'border-[#00b894] bg-[#00b894]/10'
+                    : 'border-slate-800 hover:border-slate-700 bg-slate-950/60'
+                }`}
+              >
+                {form.banner_image_url ? (
+                  <div className="flex flex-col sm:flex-row items-center gap-4">
+                    <div className="relative w-32 h-20 sm:w-40 sm:h-24 rounded-xl overflow-hidden border border-slate-700 flex-shrink-0 bg-slate-900">
+                      <img
+                        src={form.banner_image_url}
+                        alt="Event Banner Preview"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="flex-1 space-y-1.5 text-center sm:text-left">
+                      <div className="flex items-center justify-center sm:justify-start space-x-1.5 text-[#00b894] font-bold text-xs">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>{selectedFileName || 'Event banner loaded'}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Image ready to be displayed on your event page.
+                      </p>
+                      <div className="flex items-center justify-center sm:justify-start space-x-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          Choose Different Image
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex flex-col items-center justify-center py-6 text-center cursor-pointer space-y-2"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-slate-800/80 text-[#00b894] flex items-center justify-center">
+                      <Upload className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-white text-xs">
+                        Click to upload an image from your computer
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Supports PNG, JPG, WEBP (Max 10MB)
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

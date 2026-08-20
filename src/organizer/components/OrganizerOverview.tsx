@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronRight,
   TrendingUp,
+  Plus,
 } from 'lucide-react';
 
 interface OrganizerOverviewProps {
@@ -26,6 +27,7 @@ export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
   metrics,
   events,
   orgName = 'Organizer',
+  onOpenCreateModal,
   onNavigateTab,
 }) => {
   const [timeRange, setTimeRange] = useState<'Daily' | 'Weekly' | 'Monthly'>('Daily');
@@ -40,14 +42,26 @@ export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Top Welcome Title */}
-      <div className="space-y-1">
-        <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-          Welcome, {orgName}
-        </h1>
-        <p className="text-xs sm:text-sm text-slate-400 font-medium">
-          Here are your current event stats
-        </p>
+      {/* Top Welcome Title & Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+            Welcome, {orgName}
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 font-medium">
+            Here are your current event stats
+          </p>
+        </div>
+
+        {onOpenCreateModal && (
+          <button
+            onClick={onOpenCreateModal}
+            className="bg-[#00b894] hover:bg-[#00a383] text-white font-black text-xs px-5 py-3 rounded-xl shadow-lg shadow-[#00b894]/20 transition-all flex items-center space-x-2 cursor-pointer self-start sm:self-auto"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create New Event</span>
+          </button>
+        )}
       </div>
 
       {/* 4 Metric Cards Grid */}

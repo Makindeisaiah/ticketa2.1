@@ -121,12 +121,29 @@ export async function getAllEvents(filters: EventFilterOptions = {}): Promise<Se
   }
 
   if (filters.location && filters.location !== 'all' && filters.location.trim() !== '') {
-    const loc = filters.location.toLowerCase();
+    const normalize = (str: string) =>
+      str
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/['’]/g, '');
+
+    const targetLoc = normalize(filters.location);
+
     filtered = filtered.filter((e) => {
-      const city = (e.venue_city || '').toLowerCase();
-      const country = (e.venue_country || '').toLowerCase();
-      const venue = (e.venue_name || '').toLowerCase();
-      return city.includes(loc) || country.includes(loc) || venue.includes(loc) || loc.includes(city) || loc.includes(country);
+      const city = normalize(e.venue_city || '');
+      const country = normalize(e.venue_country || '');
+      const venue = normalize(e.venue_name || '');
+      const addr = normalize(e.venue_address || '');
+
+      return (
+        city.includes(targetLoc) ||
+        country.includes(targetLoc) ||
+        venue.includes(targetLoc) ||
+        addr.includes(targetLoc) ||
+        targetLoc.includes(city) ||
+        targetLoc.includes(country)
+      );
     });
   }
 

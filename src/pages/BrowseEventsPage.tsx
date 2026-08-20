@@ -138,12 +138,13 @@ export const BrowseEventsPage: React.FC<BrowseEventsPageProps> = ({
               className="bg-white border border-slate-300 text-slate-700 font-medium px-3 py-2 rounded-lg shadow-xs focus:outline-none focus:border-[#00b894] cursor-pointer"
             >
               <option value="all">All Locations</option>
+              <option value="Nigeria">Nigeria</option>
+              <option value="Ghana">Ghana</option>
+              <option value="Côte d’Ivoire">Côte d’Ivoire</option>
               <option value="Lagos, Nigeria">Lagos, Nigeria</option>
               <option value="Abuja, Nigeria">Abuja, Nigeria</option>
               <option value="Accra, Ghana">Accra, Ghana</option>
               <option value="Abidjan, Côte d’Ivoire">Abidjan, Côte d’Ivoire</option>
-              <option value="Nairobi, Kenya">Nairobi, Kenya</option>
-              <option value="London, United Kingdom">London, United Kingdom</option>
             </select>
 
             {/* Date Dropdown */}

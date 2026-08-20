@@ -2,20 +2,17 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   LayoutDashboard,
   Calendar,
-  ShoppingBag,
   Ticket,
   TrendingUp,
   Users,
+  UserCheck,
   Settings,
   Plus,
-  ChevronDown,
   ArrowLeft,
   LogOut,
-  CheckCircle2,
   Search,
   Bell,
   X,
-  User,
 } from 'lucide-react';
 import { Organization } from '../../types/database';
 import { useAuth } from '../../context/AuthContext';
@@ -23,10 +20,10 @@ import { useAuth } from '../../context/AuthContext';
 export type OrganizerTab =
   | 'overview'
   | 'events'
-  | 'orders'
-  | 'tickets'
   | 'analytics'
-  | 'team'
+  | 'tickets'
+  | 'orders'
+  | 'check-ins'
   | 'settings';
 
 interface OrganizerLayoutProps {
@@ -37,6 +34,7 @@ interface OrganizerLayoutProps {
   activeTab: OrganizerTab;
   onTabChange: (tab: OrganizerTab) => void;
   onSwitchToAttendee?: () => void;
+  onOpenCreateModal?: () => void;
   subpageTitle?: string | null;
   onBackToSettingsHub?: () => void;
   events?: any[];
@@ -52,6 +50,7 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
   onOpenCreateOrg,
   activeTab,
   onTabChange,
+  onOpenCreateModal,
   subpageTitle,
   onBackToSettingsHub,
   events = [],
@@ -59,7 +58,6 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
   children,
 }) => {
   const { user, signOut } = useAuth();
-  const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -69,10 +67,10 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
   const navItems = [
     { id: 'overview' as OrganizerTab, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'events' as OrganizerTab, label: 'Events', icon: Calendar },
-    { id: 'orders' as OrganizerTab, label: 'Orders', icon: ShoppingBag },
-    { id: 'tickets' as OrganizerTab, label: 'Tickets', icon: Ticket },
     { id: 'analytics' as OrganizerTab, label: 'Analytics', icon: TrendingUp },
-    { id: 'team' as OrganizerTab, label: 'Team & Permissions', icon: Users },
+    { id: 'tickets' as OrganizerTab, label: 'Ticket Sales', icon: Ticket },
+    { id: 'orders' as OrganizerTab, label: 'User and Customer', icon: Users },
+    { id: 'check-ins' as OrganizerTab, label: 'Check-ins', icon: UserCheck },
     { id: 'settings' as OrganizerTab, label: 'Settings', icon: Settings },
   ];
 
@@ -136,66 +134,18 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
             </div>
           </div>
 
-          {/* Active Organization Switcher */}
-          <div className="p-4 border-b border-slate-800/80 relative">
-            <label className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block mb-1.5">
-              Active Organization
-            </label>
-            <button
-              onClick={() => setIsOrgDropdownOpen(!isOrgDropdownOpen)}
-              className="w-full bg-slate-900/90 hover:bg-slate-800/90 border border-slate-700/70 rounded-xl p-2.5 flex items-center justify-between text-left transition-colors cursor-pointer"
-            >
-              <div className="flex items-center space-x-2.5 truncate">
-                <div className="w-7 h-7 rounded-lg bg-[#00b894]/20 border border-[#00b894]/40 text-[#00b894] font-bold text-xs flex items-center justify-center flex-shrink-0">
-                  {activeOrg?.name ? activeOrg.name.charAt(0).toUpperCase() : (user?.fullName ? user.fullName.charAt(0).toUpperCase() : 'O')}
-                </div>
-                <div className="truncate">
-                  <span className="block text-xs font-bold text-white truncate">
-                    {activeOrg?.name || user?.fullName || 'My Organization'}
-                  </span>
-                  <span className="block text-[10px] text-slate-400 uppercase tracking-wider font-medium">
-                    {activeOrg?.type || 'ORGANIZER'} • {activeOrg?.country || 'Nigeria'}
-                  </span>
-                </div>
-              </div>
-              <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />
-            </button>
-
-            {/* Dropdown items */}
-            {isOrgDropdownOpen && (
-              <div className="absolute left-4 right-4 top-20 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 py-1 max-h-56 overflow-y-auto">
-                <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
-                  Your Organizations
-                </div>
-                {organizations.map((org) => (
-                  <button
-                    key={org.id}
-                    onClick={() => {
-                      onSelectOrg(org);
-                      setIsOrgDropdownOpen(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-800 transition-colors cursor-pointer ${
-                      activeOrg?.id === org.id ? 'bg-[#00b894]/10 text-[#00b894] font-bold' : 'text-slate-300'
-                    }`}
-                  >
-                    <span className="truncate">{org.name}</span>
-                    {activeOrg?.id === org.id && <CheckCircle2 className="w-3.5 h-3.5 text-[#00b894]" />}
-                  </button>
-                ))}
-
-                <button
-                  onClick={() => {
-                    setIsOrgDropdownOpen(false);
-                    onOpenCreateOrg();
-                  }}
-                  className="w-full text-left px-3 py-2 text-xs text-[#00b894] hover:bg-slate-800 font-bold flex items-center space-x-1.5 border-t border-slate-800 mt-1 cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Create New Organization</span>
-                </button>
-              </div>
-            )}
-          </div>
+          {/* Quick Create Event Button in Sidebar */}
+          {onOpenCreateModal && (
+            <div className="p-3 pb-1">
+              <button
+                onClick={onOpenCreateModal}
+                className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-extrabold text-xs py-2.5 px-4 rounded-xl shadow-lg shadow-[#00b894]/20 flex items-center justify-center space-x-2 transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Create Event</span>
+              </button>
+            </div>
+          )}
 
           {/* Navigation Links */}
           <nav className="p-3 space-y-1.5">
@@ -229,7 +179,7 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
                   {user.fullName || activeOrg?.name || 'Organizer'}
                 </span>
                 <span className="block text-[10px] text-[#00b894] uppercase font-bold tracking-wider">
-                  OWNER
+                  ORGANIZER
                 </span>
               </div>
               <button
@@ -345,6 +295,17 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
 
           {/* Header Right Actions */}
           <div className="flex items-center space-x-3 sm:space-x-4 flex-shrink-0">
+            {/* Create Event Button in Header */}
+            {onOpenCreateModal && (
+              <button
+                onClick={onOpenCreateModal}
+                className="hidden sm:flex bg-[#00b894] hover:bg-[#00a383] text-white font-extrabold text-xs px-3.5 py-2 rounded-xl shadow-md shadow-[#00b894]/20 items-center space-x-1.5 transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Create Event</span>
+              </button>
+            )}
+
             {/* Notification Bell */}
             <div className="relative">
               <button 
@@ -369,10 +330,9 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
                     {user?.fullName || activeOrg?.name || 'Organizer'}
                   </span>
                   <span className="text-[10px] text-[#00b894] font-medium block uppercase tracking-wider">
-                    OWNER
+                    ORGANIZER
                   </span>
                 </div>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
               </button>
 
               {/* Profile Menu Dropdown */}
@@ -382,7 +342,7 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
                     <p className="text-xs font-bold text-white truncate">{user?.fullName || 'Organizer User'}</p>
                     <p className="text-[11px] text-slate-400 truncate">{user?.email}</p>
                     <span className="inline-block mt-1 text-[9px] font-black bg-[#00b894]/20 text-[#00b894] px-1.5 py-0.5 rounded uppercase">
-                      ORGANIZER • OWNER
+                      ORGANIZER
                     </span>
                   </div>
                   <button
@@ -394,16 +354,6 @@ export const OrganizerLayout: React.FC<OrganizerLayoutProps> = ({
                   >
                     <Settings className="w-3.5 h-3.5 text-slate-400" />
                     <span>Organization Settings</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsProfileMenuOpen(false);
-                      onTabChange('team');
-                    }}
-                    className="w-full text-left px-3.5 py-2 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center space-x-2 transition-colors cursor-pointer"
-                  >
-                    <Users className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Team &amp; Permissions</span>
                   </button>
                   <div className="border-t border-slate-800 my-1"></div>
                   <button

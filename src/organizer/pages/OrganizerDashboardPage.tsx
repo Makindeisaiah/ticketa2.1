@@ -15,9 +15,10 @@ import { OrganizerEvents } from '../components/OrganizerEvents';
 import { OrganizerAnalytics } from '../components/OrganizerAnalytics';
 import { OrganizerTicketSales } from '../components/OrganizerTicketSales';
 import { OrganizerOrdersAttendees } from '../components/OrganizerOrdersAttendees';
-import { OrganizerTeam } from '../components/OrganizerTeam';
+import { OrganizerCheckIns } from '../components/OrganizerCheckIns';
 import { OrganizerSettings, SettingsSubSection } from '../components/OrganizerSettings';
 import { OrganizerOnboardingModal } from '../components/OrganizerOnboardingModal';
+import { CreateEventModal } from '../components/CreateEventModal';
 
 interface OrganizerDashboardPageProps {
   onSwitchToAttendee: () => void;
@@ -38,6 +39,7 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
 
   const [activeTab, setActiveTab] = useState<OrganizerTab>(initialTab);
   const [isCreateOrgOpen, setIsCreateOrgOpen] = useState(false);
+  const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
   const [subpageTitle, setSubpageTitle] = useState<string | null>(null);
   const [settingsSubSection, setSettingsSubSection] = useState<SettingsSubSection>(null);
 
@@ -130,6 +132,7 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
         window.history.pushState({}, '', subpath);
       }}
       onSwitchToAttendee={onSwitchToAttendee}
+      onOpenCreateModal={() => setIsCreateEventOpen(true)}
       subpageTitle={subpageTitle}
       onBackToSettingsHub={() => {
         setSubpageTitle(null);
@@ -144,6 +147,7 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
           metrics={metrics}
           events={events}
           orgName={effectiveOrg?.name || user?.fullName || 'Organizer'}
+          onOpenCreateModal={() => setIsCreateEventOpen(true)}
           onNavigateTab={(tab) => {
             setActiveTab(tab);
             window.history.pushState({}, '', `/organizer/${tab}`);
@@ -156,25 +160,25 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
           events={events}
           orgId={currentOrgId}
           userId={user?.id || ''}
-          onOpenCreateModal={() => {}}
+          onOpenCreateModal={() => setIsCreateEventOpen(true)}
           onRefreshEvents={loadOrgData}
         />
-      )}
-
-      {activeTab === 'orders' && (
-        <OrganizerOrdersAttendees orders={orders} attendees={attendees} />
-      )}
-
-      {activeTab === 'tickets' && (
-        <OrganizerTicketSales orders={orders} />
       )}
 
       {activeTab === 'analytics' && (
         <OrganizerAnalytics events={events} orders={orders} metrics={metrics} />
       )}
 
-      {activeTab === 'team' && (
-        <OrganizerTeam orgId={currentOrgId} userId={user?.id || ''} />
+      {activeTab === 'tickets' && (
+        <OrganizerTicketSales orders={orders} />
+      )}
+
+      {activeTab === 'orders' && (
+        <OrganizerOrdersAttendees orders={orders} attendees={attendees} />
+      )}
+
+      {activeTab === 'check-ins' && (
+        <OrganizerCheckIns events={events} userId={user?.id || ''} />
       )}
 
       {activeTab === 'settings' && (
@@ -198,6 +202,18 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
             refreshOrganizations(user.id);
           }}
           onClose={() => setIsCreateOrgOpen(false)}
+        />
+      )}
+
+      {isCreateEventOpen && (
+        <CreateEventModal
+          orgId={currentOrgId}
+          userId={user?.id || ''}
+          onSuccess={() => {
+            setIsCreateEventOpen(false);
+            loadOrgData();
+          }}
+          onClose={() => setIsCreateEventOpen(false)}
         />
       )}
     </OrganizerLayout>
