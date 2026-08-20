@@ -322,6 +322,18 @@ export async function createOrganization(
   }
 }
 
+// Helper to get local event sales and global orders
+function getLocalSalesData() {
+  try {
+    const salesTracker = JSON.parse(localStorage.getItem('ticketa_event_sales_tracker_v1') || '{}');
+    const globalOrders = JSON.parse(localStorage.getItem('ticketa_global_orders_v1') || '[]');
+    const userOrders = JSON.parse(localStorage.getItem('ticketa_user_orders_v1') || '[]');
+    return { salesTracker, globalOrders, userOrders };
+  } catch (e) {
+    return { salesTracker: {}, globalOrders: [], userOrders: [] };
+  }
+}
+
 // 3. Get Organization Metrics
 export async function getOrganizationMetrics(orgId: string) {
   let metrics = {
@@ -333,59 +345,27 @@ export async function getOrganizationMetrics(orgId: string) {
   };
 
   try {
-    if (isSupabaseConfigured && orgId && isValidUUID(orgId)) {
-      const { data: events } = await supabase
-        .from('events')
-        .select('id, status')
-        .eq('organization_id', orgId);
+    // 1. Fetch hydrated organization events which already aggregate DB & local ticket sales
+    const orgEvents = await getOrganizationEvents(orgId);
+    
+    if (orgEvents && orgEvents.length > 0) {
+      const totalRev = orgEvents.reduce((sum, e) => sum + (Number(e.revenue) || 0), 0);
+      const sold = orgEvents.reduce((sum, e) => sum + (Number(e.total_sold) || 0), 0);
+      const checkedIn = orgEvents.reduce((sum, e) => sum + (Number(e.checked_in_count) || 0), 0);
+      const active = orgEvents.filter((e) => e.status === 'PUBLISHED' || !e.status).length;
 
-      const eventIds = (events || []).map((e) => e.id);
-      const totalEvents = events?.length || 0;
-      const activeEvents = events?.filter((e) => e.status === 'PUBLISHED').length || 0;
+      metrics = {
+        totalRevenue: totalRev,
+        ticketsSold: sold,
+        totalEvents: orgEvents.length,
+        activeEvents: active,
+        totalCheckedIn: checkedIn,
+      };
 
-      if (eventIds.length > 0) {
-        const { data: orders } = await supabase
-          .from('orders')
-          .select('id, total_amount, status')
-          .in('event_id', eventIds);
-
-        const paidOrders = (orders || []).filter((o) => o.status === 'PAID');
-        const totalRevenue = paidOrders.reduce((acc, curr) => acc + Number(curr.total_amount || 0), 0);
-
-        const { data: tickets } = await supabase
-          .from('tickets')
-          .select('id, is_checked_in, status')
-          .in('event_id', eventIds);
-
-        const validTickets = (tickets || []).filter((t) => t.status === 'VALID' || t.status === 'USED');
-        const ticketsSold = validTickets.length;
-        const totalCheckedIn = (tickets || []).filter((t) => t.is_checked_in).length;
-
-        metrics = {
-          totalRevenue,
-          ticketsSold,
-          totalEvents,
-          activeEvents,
-          totalCheckedIn,
-        };
-      }
+      return metrics;
     }
   } catch (e) {
     console.error('Error calculating metrics:', e);
-  }
-
-  // If metrics are 0 or empty, aggregate dynamically from events
-  if (metrics.totalEvents === 0 && metrics.ticketsSold === 0) {
-    const orgEvents = await getOrganizationEvents(orgId);
-    if (orgEvents.length > 0) {
-      metrics = {
-        totalRevenue: orgEvents.reduce((sum, e) => sum + (e.revenue || 0), 0),
-        ticketsSold: orgEvents.reduce((sum, e) => sum + (e.total_sold || 0), 0),
-        totalEvents: orgEvents.length,
-        activeEvents: orgEvents.filter((e) => e.status === 'PUBLISHED').length,
-        totalCheckedIn: orgEvents.reduce((sum, e) => sum + (e.checked_in_count || 0), 0),
-      };
-    }
   }
 
   return metrics;
@@ -394,6 +374,7 @@ export async function getOrganizationMetrics(orgId: string) {
 // 4. Get Organization Events
 export async function getOrganizationEvents(orgId: string): Promise<any[]> {
   let eventsList: any[] = [];
+  const { salesTracker, globalOrders, userOrders } = getLocalSalesData();
 
   if (isSupabaseConfigured && orgId && isValidUUID(orgId)) {
     try {
@@ -416,7 +397,7 @@ export async function getOrganizationEvents(orgId: string): Promise<any[]> {
     }
   }
 
-  // If no organization events are returned yet, populate with realistic organizer events
+  // If no organization events are returned yet from Supabase, populate with default organizer events
   if (eventsList.length === 0) {
     const defaultOrganizerSeed = [
       {
@@ -483,14 +464,99 @@ export async function getOrganizationEvents(orgId: string): Promise<any[]> {
     eventsList = defaultOrganizerSeed;
   }
 
+  // Fetch DB counts for valid tickets and orders for DB events
+  let dbTicketsByEvent: Record<string, number> = {};
+  let dbRevenueByEvent: Record<string, number> = {};
+  let dbCheckedInByEvent: Record<string, number> = {};
+
+  const validDbEventIds = eventsList.map((e) => e.id).filter(isValidUUID);
+  if (isSupabaseConfigured && validDbEventIds.length > 0) {
+    try {
+      const { data: dbTickets } = await supabase
+        .from('tickets')
+        .select('event_id, status, is_checked_in')
+        .in('event_id', validDbEventIds);
+
+      (dbTickets || []).forEach((t: any) => {
+        if (t.status !== 'CANCELLED' && t.status !== 'REFUNDED') {
+          dbTicketsByEvent[t.event_id] = (dbTicketsByEvent[t.event_id] || 0) + 1;
+        }
+        if (t.is_checked_in) {
+          dbCheckedInByEvent[t.event_id] = (dbCheckedInByEvent[t.event_id] || 0) + 1;
+        }
+      });
+
+      const { data: dbOrders } = await supabase
+        .from('orders')
+        .select('event_id, total_amount, status')
+        .in('event_id', validDbEventIds);
+
+      (dbOrders || []).forEach((o: any) => {
+        if (o.status === 'PAID' || !o.status) {
+          dbRevenueByEvent[o.event_id] = (dbRevenueByEvent[o.event_id] || 0) + Number(o.total_amount || 0);
+        }
+      });
+    } catch (e) {
+      console.warn('Notice querying DB tickets & orders summary:', e);
+    }
+  }
+
   // Hydrate each event with accurate aggregated counts and progress
   return eventsList.map((evt) => {
     const ticketTypes = evt.ticket_types || [];
-    const totalSold = ticketTypes.reduce((s: number, tt: any) => s + (Number(tt.quantity_sold) || 0), 0);
-    const totalAvail = ticketTypes.reduce((s: number, tt: any) => s + (Number(tt.quantity_available) || 0), 0);
-    const totalCapacity = totalSold + totalAvail;
-    const progressVal = totalCapacity > 0 ? Math.round((totalSold / totalCapacity) * 100) : 0;
-    const revenue = ticketTypes.reduce((s: number, tt: any) => s + ((Number(tt.quantity_sold) || 0) * (Number(tt.price) || 0)), 0);
+    
+    // 1. Sold tickets from ticket_types rows
+    const ttSold = ticketTypes.reduce((s: number, tt: any) => s + (Number(tt.quantity_sold) || 0), 0);
+    const ttAvail = ticketTypes.reduce((s: number, tt: any) => s + (Number(tt.quantity_available) || 0), 0);
+    const ttRevenue = ticketTypes.reduce(
+      (s: number, tt: any) => s + (Number(tt.quantity_sold) || 0) * (Number(tt.price) || 0),
+      0
+    );
+
+    // 2. Count from DB tickets/orders
+    const dbTicketsCount = dbTicketsByEvent[evt.id] || 0;
+    const dbRevenue = dbRevenueByEvent[evt.id] || 0;
+    const dbCheckedIn = dbCheckedInByEvent[evt.id] || 0;
+
+    // 3. Local sales tracker purchases
+    const localTracker =
+      salesTracker[evt.id] ||
+      salesTracker[evt.title] ||
+      (evt.slug ? salesTracker[evt.slug] : null) ||
+      { sold: 0, revenue: 0 };
+
+    // 4. Local orders matching this event
+    const matchingLocalOrders = [
+      ...globalOrders.filter((o: any) => o.event_id === evt.id || o.event_title === evt.title),
+      ...userOrders.filter((o: any) => o.eventId === evt.id || o.eventTitle === evt.title),
+    ];
+    const localOrderQty = matchingLocalOrders.reduce((sum: number, o: any) => {
+      const q = Number(o.quantity) || (o.items ? o.items.reduce((s: number, it: any) => s + it.quantity, 0) : 1);
+      return sum + q;
+    }, 0);
+    const localOrderRev = matchingLocalOrders.reduce((sum: number, o: any) => sum + (Number(o.total_amount || o.totalAmount) || 0), 0);
+
+    // Aggregate maximum accurate sales and revenue
+    const totalSold = Math.max(
+      ttSold,
+      dbTicketsCount,
+      Number(localTracker.sold) || 0,
+      localOrderQty
+    );
+
+    const revenue = Math.max(
+      ttRevenue,
+      dbRevenue,
+      Number(localTracker.revenue) || 0,
+      localOrderRev,
+      Number(evt.revenue) || 0
+    );
+
+    const defaultBaseCapacity = Number(evt.total_capacity) || (ttAvail + ttSold > 0 ? ttAvail + ttSold : 30);
+    const totalCapacity = Math.max(defaultBaseCapacity, totalSold > 0 ? Math.max(totalSold, 30) : 30);
+    const totalAvail = Math.max(0, totalCapacity - totalSold);
+    const progressVal = totalCapacity > 0 ? Math.min(100, Math.round((totalSold / totalCapacity) * 100)) : 0;
+    const checkedInCount = Math.max(Number(evt.checked_in_count) || 0, dbCheckedIn);
 
     return {
       ...evt,
@@ -499,7 +565,7 @@ export async function getOrganizationEvents(orgId: string): Promise<any[]> {
       total_capacity: totalCapacity,
       progress_val: progressVal,
       revenue,
-      checked_in_count: Number(evt.checked_in_count) || 0,
+      checked_in_count: checkedInCount,
     };
   });
 }
@@ -929,88 +995,147 @@ export async function updateEventStatus(
 
 // 7. Get Organization Orders
 export async function getOrganizationOrders(orgId: string): Promise<any[]> {
-  if (!isSupabaseConfigured || !orgId || !isValidUUID(orgId)) return [];
+  const { globalOrders, userOrders } = getLocalSalesData();
+  let ordersList: any[] = [];
 
-  try {
-    const { data: events } = await supabase
-      .from('events')
-      .select('id, title')
-      .eq('organization_id', orgId);
+  if (isSupabaseConfigured && orgId && isValidUUID(orgId)) {
+    try {
+      const { data: events } = await supabase
+        .from('events')
+        .select('id, title')
+        .eq('organization_id', orgId);
 
-    if (!events || events.length === 0) return [];
+      if (events && events.length > 0) {
+        const eventMap = new Map(events.map((e) => [e.id, e.title]));
+        const eventIds = Array.from(eventMap.keys());
 
-    const eventMap = new Map(events.map((e) => [e.id, e.title]));
-    const eventIds = Array.from(eventMap.keys());
+        const { data: orders, error } = await supabase
+          .from('orders')
+          .select(`
+            *,
+            attendee_profiles:user_id (full_name, email, phone_number),
+            order_items (*)
+          `)
+          .in('event_id', eventIds)
+          .order('created_at', { ascending: false });
 
-    const { data: orders, error } = await supabase
-      .from('orders')
-      .select(`
-        *,
-        attendee_profiles:user_id (full_name, email, phone_number),
-        order_items (*)
-      `)
-      .in('event_id', eventIds)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching org orders:', error);
-      return [];
+        if (!error && orders) {
+          ordersList = orders.map((o: any) => ({
+            ...o,
+            event_title: eventMap.get(o.event_id) || 'Event',
+            customer_name: o.attendee_profiles?.full_name || o.customer_name || 'Attendee',
+            customer_email: o.attendee_profiles?.email || o.customer_email || 'N/A',
+          }));
+        }
+      }
+    } catch (e) {
+      console.error('Org orders exception:', e);
     }
-
-    return (orders || []).map((o: any) => ({
-      ...o,
-      event_title: eventMap.get(o.event_id) || 'Event',
-      customer_name: o.attendee_profiles?.full_name || o.customer_name || 'Attendee',
-      customer_email: o.attendee_profiles?.email || o.customer_email || 'N/A',
-    }));
-  } catch (e) {
-    console.error('Org orders exception:', e);
-    return [];
   }
+
+  // Merge with local orders (avoiding duplicate IDs)
+  const existingOrderIds = new Set(ordersList.map((o) => o.id || o.order_number));
+  const allLocal = [...globalOrders, ...userOrders];
+
+  for (const lo of allLocal) {
+    const id = lo.id || lo.orderNumber || lo.order_number;
+    if (!existingOrderIds.has(id)) {
+      existingOrderIds.add(id);
+      ordersList.unshift({
+        id: id || `ord-${Date.now()}`,
+        order_number: lo.order_number || lo.orderNumber || `ORD-${Date.now()}`,
+        event_id: lo.event_id || lo.eventId,
+        event_title: lo.event_title || lo.eventTitle || 'Event',
+        customer_name: lo.customer_name || lo.buyerName || 'Valued Attendee',
+        customer_email: lo.customer_email || lo.buyerEmail || 'attendee@example.com',
+        customer_phone: lo.customer_phone || lo.buyerPhone || '',
+        total_amount: Number(lo.total_amount || lo.totalAmount || 0),
+        status: lo.status || 'PAID',
+        currency: 'NGN',
+        payment_reference: lo.payment_reference || lo.paymentReference || 'PSTK-REF',
+        created_at: lo.created_at || lo.createdAt || new Date().toISOString(),
+        quantity: Number(lo.quantity || (lo.items ? lo.items.reduce((s: number, it: any) => s + it.quantity, 0) : 1)),
+        order_items: lo.items || lo.order_items || [],
+        tickets: lo.tickets || [],
+      });
+    }
+  }
+
+  return ordersList;
 }
 
 // 8. Get Organization Attendees / Tickets
 export async function getOrganizationAttendees(orgId: string): Promise<any[]> {
-  if (!isSupabaseConfigured || !orgId || !isValidUUID(orgId)) return [];
+  const { globalOrders, userOrders } = getLocalSalesData();
+  let attendeesList: any[] = [];
 
-  try {
-    const { data: events } = await supabase
-      .from('events')
-      .select('id, title')
-      .eq('organization_id', orgId);
+  if (isSupabaseConfigured && orgId && isValidUUID(orgId)) {
+    try {
+      const { data: events } = await supabase
+        .from('events')
+        .select('id, title')
+        .eq('organization_id', orgId);
 
-    if (!events || events.length === 0) return [];
+      if (events && events.length > 0) {
+        const eventMap = new Map(events.map((e) => [e.id, e.title]));
+        const eventIds = Array.from(eventMap.keys());
 
-    const eventMap = new Map(events.map((e) => [e.id, e.title]));
-    const eventIds = Array.from(eventMap.keys());
+        const { data: tickets, error } = await supabase
+          .from('tickets')
+          .select(`
+            *,
+            attendee_profiles:user_id (full_name, email),
+            ticket_types (name, price)
+          `)
+          .in('event_id', eventIds)
+          .order('created_at', { ascending: false });
 
-    const { data: tickets, error } = await supabase
-      .from('tickets')
-      .select(`
-        *,
-        attendee_profiles:user_id (full_name, email),
-        ticket_types (name, price)
-      `)
-      .in('event_id', eventIds)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching org tickets:', error);
-      return [];
+        if (!error && tickets) {
+          attendeesList = tickets.map((t: any) => ({
+            ...t,
+            event_title: eventMap.get(t.event_id) || 'Event',
+            attendee_name: t.attendee_name || t.attendee_profiles?.full_name || 'Attendee',
+            attendee_email: t.attendee_email || t.attendee_profiles?.email || 'N/A',
+            ticket_type_name: t.ticket_types?.name || 'Standard',
+            price: t.ticket_types?.price || 0,
+          }));
+        }
+      }
+    } catch (e) {
+      console.error('Org attendees exception:', e);
     }
-
-    return (tickets || []).map((t: any) => ({
-      ...t,
-      event_title: eventMap.get(t.event_id) || 'Event',
-      attendee_name: t.attendee_name || t.attendee_profiles?.full_name || 'Attendee',
-      attendee_email: t.attendee_email || t.attendee_profiles?.email || 'N/A',
-      ticket_type_name: t.ticket_types?.name || 'Standard',
-      price: t.ticket_types?.price || 0,
-    }));
-  } catch (e) {
-    console.error('Org attendees exception:', e);
-    return [];
   }
+
+  // Merge with local tickets
+  const existingTicketCodes = new Set(attendeesList.map((t) => t.ticket_code || t.ticketCode));
+  const allLocal = [...globalOrders, ...userOrders];
+
+  for (const ord of allLocal) {
+    if (ord.tickets && Array.isArray(ord.tickets)) {
+      for (const tkt of ord.tickets) {
+        const code = tkt.ticket_code || tkt.ticketCode;
+        if (!existingTicketCodes.has(code)) {
+          existingTicketCodes.add(code);
+          attendeesList.unshift({
+            id: `tkt-${Date.now()}-${code}`,
+            ticket_code: code,
+            qr_code_hash: tkt.qr_code_hash || tkt.qrCodeHash,
+            event_id: ord.event_id || ord.eventId,
+            event_title: ord.event_title || ord.eventTitle,
+            attendee_name: ord.customer_name || ord.buyerName || 'Attendee',
+            attendee_email: ord.customer_email || ord.buyerEmail || 'attendee@example.com',
+            ticket_type_name: tkt.ticket_type || tkt.ticketType || 'General Admission',
+            price: Number(tkt.price || ord.total_amount || ord.totalAmount || 0),
+            status: tkt.status || 'VALID',
+            is_checked_in: Boolean(tkt.is_checked_in || tkt.isCheckedIn),
+            created_at: ord.created_at || ord.createdAt || new Date().toISOString(),
+          });
+        }
+      }
+    }
+  }
+
+  return attendeesList;
 }
 
 // 9. Atomic QR Code Check-In

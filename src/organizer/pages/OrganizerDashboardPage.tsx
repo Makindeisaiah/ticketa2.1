@@ -61,9 +61,8 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
   }, [initialTab]);
 
   // Load Organization Specific Data safely
-  const activeOrgId = activeOrg?.id;
+  const activeOrgId = activeOrg?.id || '';
   const loadOrgData = React.useCallback(async () => {
-    if (!activeOrgId || !isValidUUID(activeOrgId)) return;
     setDataLoading(true);
 
     try {
@@ -98,9 +97,24 @@ export const OrganizerDashboardPage: React.FC<OrganizerDashboardPageProps> = ({
   }, [activeOrgId]);
 
   useEffect(() => {
-    if (activeOrgId && isValidUUID(activeOrgId)) {
+    loadOrgData();
+
+    // Listen to real-time ticket purchase events
+    const handleOrderEvent = () => {
       loadOrgData();
-    }
+    };
+
+    window.addEventListener('ticketa_order_created', handleOrderEvent);
+    window.addEventListener('ticketa_order_completed', handleOrderEvent);
+    window.addEventListener('ticketa_tickets_updated', handleOrderEvent);
+    window.addEventListener('storage', handleOrderEvent);
+
+    return () => {
+      window.removeEventListener('ticketa_order_created', handleOrderEvent);
+      window.removeEventListener('ticketa_order_completed', handleOrderEvent);
+      window.removeEventListener('ticketa_tickets_updated', handleOrderEvent);
+      window.removeEventListener('storage', handleOrderEvent);
+    };
   }, [activeOrgId, loadOrgData]);
 
   const effectiveOrg: Organization = activeOrg || organizations[0] || {

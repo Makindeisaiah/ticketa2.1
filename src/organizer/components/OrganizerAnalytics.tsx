@@ -48,34 +48,46 @@ export const OrganizerAnalytics: React.FC<OrganizerAnalyticsProps> = ({
       : orders.filter((o) => o.event_id === selectedEventId);
 
   // Compute metrics from actual data
-  const totalRevenue = targetEvents.reduce((acc, evt) => {
-    if (!evt.ticket_types || !Array.isArray(evt.ticket_types)) {
-      return acc + (Number(evt.revenue) || 0);
-    }
-    return (
-      acc +
-      evt.ticket_types.reduce(
-        (sub: number, tt: any) =>
-          sub + (Number(tt.quantity_sold) || 0) * (Number(tt.price) || 0),
-        0
-      )
-    );
-  }, 0) || Number(metrics.totalRevenue) || 0;
+  const totalRevenue =
+    targetEvents.reduce((acc, evt) => {
+      const rev = Number(evt.revenue);
+      if (!isNaN(rev) && rev > 0) return acc + rev;
+      if (evt.ticket_types && Array.isArray(evt.ticket_types)) {
+        return (
+          acc +
+          evt.ticket_types.reduce(
+            (sub: number, tt: any) =>
+              sub + (Number(tt.quantity_sold) || 0) * (Number(tt.price) || 0),
+            0
+          )
+        );
+      }
+      return acc;
+    }, 0) ||
+    Number(metrics.totalRevenue) ||
+    0;
 
-  const totalSold = targetEvents.reduce((acc, evt) => {
-    if (!evt.ticket_types || !Array.isArray(evt.ticket_types)) {
-      return acc + (Number(evt.total_sold) || 0);
-    }
-    return (
-      acc +
-      evt.ticket_types.reduce(
-        (sub: number, tt: any) => sub + (Number(tt.quantity_sold) || 0),
-        0
-      )
-    );
-  }, 0) || Number(metrics.ticketsSold) || 0;
+  const totalSold =
+    targetEvents.reduce((acc, evt) => {
+      const s = Number(evt.total_sold);
+      if (!isNaN(s) && s > 0) return acc + s;
+      if (evt.ticket_types && Array.isArray(evt.ticket_types)) {
+        return (
+          acc +
+          evt.ticket_types.reduce(
+            (sub: number, tt: any) => sub + (Number(tt.quantity_sold) || 0),
+            0
+          )
+        );
+      }
+      return acc;
+    }, 0) ||
+    Number(metrics.ticketsSold) ||
+    0;
 
   const totalAvailable = targetEvents.reduce((acc, evt) => {
+    const a = Number(evt.total_available);
+    if (!isNaN(a) && a > 0) return acc + a;
     if (!evt.ticket_types || !Array.isArray(evt.ticket_types)) return acc + 100;
     return (
       acc +

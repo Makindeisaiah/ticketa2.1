@@ -26,15 +26,25 @@ export const OrganizerTicketSales: React.FC<{ orders?: any[]; events?: any[] }> 
     (o) => o.status === 'PAID' || o.status === 'COMPLETED' || !o.status
   );
 
-  const totalRev = paidOrders.reduce(
+  const relevantEvents =
+    selectedEvent === 'All Events'
+      ? events
+      : events.filter((e) => e.id === selectedEvent || e.title === selectedEvent);
+
+  const orderRev = paidOrders.reduce(
     (sum, o) => sum + (Number(o.total_amount) || 0),
     0
   );
+  const eventRev = relevantEvents.reduce(
+    (sum, e) => sum + (Number(e.revenue) || 0),
+    0
+  );
+  const totalRev = Math.max(orderRev, eventRev);
   const platformFee = Math.round(totalRev * 0.05);
-  const netRev = totalRev - platformFee;
+  const netRev = Math.max(0, totalRev - platformFee);
 
-  const totalTickets = (filteredOrders || []).reduce((sum, o) => {
-    if (o.order_items && Array.isArray(o.order_items)) {
+  const orderTickets = (filteredOrders || []).reduce((sum, o) => {
+    if (o.order_items && Array.isArray(o.order_items) && o.order_items.length > 0) {
       return (
         sum +
         o.order_items.reduce(
@@ -45,6 +55,13 @@ export const OrganizerTicketSales: React.FC<{ orders?: any[]; events?: any[] }> 
     }
     return sum + (Number(o.quantity) || 1);
   }, 0);
+
+  const eventTickets = relevantEvents.reduce(
+    (sum, e) => sum + (Number(e.total_sold) || 0),
+    0
+  );
+
+  const totalTickets = Math.max(orderTickets, eventTickets);
 
   // Group ticket types performance
   const ticketTypeMap = new Map<

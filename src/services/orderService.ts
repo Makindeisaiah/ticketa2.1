@@ -280,6 +280,9 @@ export async function processPaystackOrder(payload: OrderCheckoutPayload): Promi
               currency: 'NGN',
               status: 'PAID',
               payment_reference: paymentRef,
+              customer_name: payload.buyer.fullName,
+              customer_email: payload.buyer.email,
+              customer_phone: payload.buyer.phoneNumber,
             })
             .select()
             .single();
@@ -308,12 +311,37 @@ export async function processPaystackOrder(payload: OrderCheckoutPayload): Promi
                 event_id: dbEventId,
                 ticket_type_id: dbTicketTypeId,
                 user_id: currentUserId,
+                attendee_name: payload.buyer.fullName,
+                attendee_email: payload.buyer.email,
                 status: 'VALID',
                 is_checked_in: false,
               }));
 
               const { error: tktErr } = await supabase.from('tickets').insert(ticketsToInsert);
               if (tktErr) console.error('Supabase DB tickets insert error:', tktErr.message);
+
+              // Update ticket_types quantity_sold and quantity_available in database
+              try {
+                const totalPurchased = payload.items.reduce((s, it) => s + it.quantity, 0);
+                const { data: currentTt } = await supabase
+                  .from('ticket_types')
+                  .select('quantity_sold, quantity_available')
+                  .eq('id', dbTicketTypeId)
+                  .single();
+
+                if (currentTt) {
+                  await supabase
+                    .from('ticket_types')
+                    .update({
+                      quantity_sold: (Number(currentTt.quantity_sold) || 0) + totalPurchased,
+                      quantity_available: Math.max(0, (Number(currentTt.quantity_available) || 100) - totalPurchased),
+                      updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', dbTicketTypeId);
+                }
+              } catch (ttUpdateErr) {
+                console.warn('Error updating ticket_types in DB:', ttUpdateErr);
+              }
             }
           }
         }
@@ -321,6 +349,69 @@ export async function processPaystackOrder(payload: OrderCheckoutPayload): Promi
     } catch (e) {
       console.warn('Supabase DB order insertion notice:', e);
     }
+  }
+
+  // 2. Persist locally to storage so organizer dashboard and attendee view instantly update
+  try {
+    const existingOrders = JSON.parse(localStorage.getItem(STORAGE_ORDERS_KEY) || '[]');
+    const updatedUserOrders = [orderResult, ...existingOrders.filter((o: any) => o.id !== orderResult.id)];
+    localStorage.setItem(STORAGE_ORDERS_KEY, JSON.stringify(updatedUserOrders));
+
+    // Global order registry for organizers
+    const globalOrders = JSON.parse(localStorage.getItem('ticketa_global_orders_v1') || '[]');
+    const updatedGlobal = [
+      {
+        id: orderResult.id,
+        order_number: orderResult.orderNumber,
+        event_id: payload.event.id,
+        event_title: payload.event.title,
+        customer_name: payload.buyer.fullName,
+        customer_email: payload.buyer.email,
+        customer_phone: payload.buyer.phoneNumber,
+        total_amount: payload.totalAmount,
+        subtotal: payload.subtotal,
+        status: 'PAID',
+        currency: 'NGN',
+        payment_reference: paymentRef,
+        created_at: orderResult.createdAt,
+        quantity: payload.items.reduce((sum, it) => sum + it.quantity, 0),
+        items: payload.items,
+        tickets: orderResult.tickets,
+      },
+      ...globalOrders.filter((o: any) => o.id !== orderResult.id),
+    ];
+    localStorage.setItem('ticketa_global_orders_v1', JSON.stringify(updatedGlobal));
+
+    // Event sales tracker map (eventId -> sales summary)
+    const salesTracker = JSON.parse(localStorage.getItem('ticketa_event_sales_tracker_v1') || '{}');
+    const prevEventSales = salesTracker[payload.event.id] || salesTracker[payload.event.title] || {
+      sold: 0,
+      revenue: 0,
+      ticketTypes: {},
+    };
+
+    const addedQty = payload.items.reduce((sum, it) => sum + it.quantity, 0);
+    const addedRev = payload.totalAmount;
+
+    prevEventSales.sold = (Number(prevEventSales.sold) || 0) + addedQty;
+    prevEventSales.revenue = (Number(prevEventSales.revenue) || 0) + addedRev;
+    
+    payload.items.forEach((it) => {
+      prevEventSales.ticketTypes[it.ticketTypeName] = (prevEventSales.ticketTypes[it.ticketTypeName] || 0) + it.quantity;
+    });
+
+    salesTracker[payload.event.id] = prevEventSales;
+    salesTracker[payload.event.title] = prevEventSales;
+    if (payload.event.slug) {
+      salesTracker[payload.event.slug] = prevEventSales;
+    }
+    localStorage.setItem('ticketa_event_sales_tracker_v1', JSON.stringify(salesTracker));
+
+    // Broadcast update events across all components
+    window.dispatchEvent(new CustomEvent('ticketa_order_created', { detail: orderResult }));
+    window.dispatchEvent(new CustomEvent('ticketa_tickets_updated', { detail: { eventId: payload.event.id, quantity: addedQty, revenue: addedRev } }));
+  } catch (err) {
+    console.warn('LocalStorage order persistence error:', err);
   }
 
   return orderResult;

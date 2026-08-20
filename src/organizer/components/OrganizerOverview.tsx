@@ -34,11 +34,18 @@ export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
   const [timeRange, setTimeRange] = useState<'Daily' | 'Weekly' | 'Monthly'>('Daily');
 
   // Compute live values
-  const totalRev = Number(metrics.totalRevenue) || 0;
+  const totalRev =
+    Number(metrics.totalRevenue) ||
+    events.reduce((sum, e) => sum + (Number(e.revenue) || 0), 0) ||
+    0;
   const displayRevenue = `₦${totalRev.toLocaleString()}`;
-  const displaySold = `${(Number(metrics.ticketsSold) || 0).toLocaleString()}`;
+  const totalSold =
+    Number(metrics.ticketsSold) ||
+    events.reduce((sum, e) => sum + (Number(e.total_sold) || 0), 0) ||
+    0;
+  const displaySold = `${totalSold.toLocaleString()}`;
   const displayEvents = metrics.activeEvents || events.length || 0;
-  const displayCheckIns = `${(Number(metrics.totalCheckedIn) || 0).toLocaleString()}`;
+  const displayCheckIns = `${(Number(metrics.totalCheckedIn) || events.reduce((sum, e) => sum + (Number(e.checked_in_count) || 0), 0)).toLocaleString()}`;
   const upcomingEventsList = events.slice(0, 5);
 
   // Dynamic Chart Points based on time range and real revenue

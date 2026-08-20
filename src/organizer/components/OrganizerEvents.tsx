@@ -188,27 +188,32 @@ export const OrganizerEvents: React.FC<OrganizerEventsProps> = ({
         {filteredEvents.length > 0 ? (
           filteredEvents.map((evt) => {
             const ticketTypes = evt.ticket_types || [];
-            const totalAvail = ticketTypes.reduce(
-              (s: number, t: any) => s + (Number(t.quantity_available) || 0),
-              0
+            const totalSold = Number(
+              evt.total_sold !== undefined
+                ? evt.total_sold
+                : ticketTypes.reduce((s: number, t: any) => s + (Number(t.quantity_sold) || 0), 0)
             );
-            const totalSold = ticketTypes.reduce(
-              (s: number, t: any) => s + (Number(t.quantity_sold) || 0),
-              0
+            const totalAvail = Number(
+              evt.total_available !== undefined
+                ? evt.total_available
+                : ticketTypes.reduce((s: number, t: any) => s + (Number(t.quantity_available) || 0), 0)
             );
-            const totalCapacity = totalAvail + totalSold > 0 ? totalAvail + totalSold : (evt.total_capacity || 30);
+            const totalCapacity = Number(evt.total_capacity) || (totalAvail + totalSold > 0 ? totalAvail + totalSold : 30);
             
             // Accurate progress bar percentage
             const progressVal =
-              totalCapacity > 0
-                ? Math.min(100, Math.round((totalSold / totalCapacity) * 100))
-                : evt.progress_val || 0;
+              typeof evt.progress_val === 'number'
+                ? evt.progress_val
+                : (totalCapacity > 0 ? Math.min(100, Math.round((totalSold / totalCapacity) * 100)) : 0);
 
-            const eventRevenue = ticketTypes.reduce(
-              (s: number, t: any) =>
-                s + (Number(t.quantity_sold) || 0) * (Number(t.price) || 0),
-              0
-            ) || Number(evt.revenue) || 0;
+            const eventRevenue =
+              typeof evt.revenue === 'number'
+                ? evt.revenue
+                : ticketTypes.reduce(
+                    (s: number, t: any) =>
+                      s + (Number(t.quantity_sold) || 0) * (Number(t.price) || 0),
+                    0
+                  );
 
             const isMenuOpen = openMenuEventId === evt.id;
             const venueName =
