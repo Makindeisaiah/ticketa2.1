@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Plus,
   Search,
@@ -8,6 +8,8 @@ import {
   TrendingUp,
   Ticket,
   Calendar,
+  Clock,
+  MapPin,
   Settings2,
   Edit3,
   DollarSign,
@@ -194,7 +196,8 @@ export const OrganizerEvents: React.FC<OrganizerEventsProps> = ({
               (s: number, t: any) => s + (Number(t.quantity_sold) || 0),
               0
             );
-            const totalCapacity = totalAvail + totalSold;
+            const totalCapacity = totalAvail + totalSold > 0 ? totalAvail + totalSold : (evt.total_capacity || 30);
+            
             // Accurate progress bar percentage
             const progressVal =
               totalCapacity > 0
@@ -205,121 +208,110 @@ export const OrganizerEvents: React.FC<OrganizerEventsProps> = ({
               (s: number, t: any) =>
                 s + (Number(t.quantity_sold) || 0) * (Number(t.price) || 0),
               0
-            );
+            ) || Number(evt.revenue) || 0;
 
-            const isFastSelling = progressVal >= 60;
-            const isAverageSelling = progressVal >= 20 && progressVal < 60;
             const isMenuOpen = openMenuEventId === evt.id;
+            const venueName =
+              evt.venues?.name ||
+              evt.venue ||
+              evt.venue_name ||
+              (evt.is_online ? 'Online Event' : 'Victoria Island, Lagos');
+
+            const dateStr = evt.start_time
+              ? new Date(evt.start_time).toLocaleString('en-US', {
+                  weekday: 'short',
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : evt.date || 'Date & Time TBD';
+
+            const bannerImg =
+              evt.banner_image_url ||
+              evt.image ||
+              'https://images.unsplash.com/photo-1540039155733-5bb30b53aa14?auto=format&fit=crop&q=80&w=600';
 
             return (
               <div
                 key={evt.id}
-                className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-5 hover:border-slate-300 transition-all relative"
+                className="bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#00b894]/40 transition-all relative"
               >
-                {/* Event Image & Main Info */}
-                <div className="flex items-center space-x-4 flex-1 min-w-0">
-                  <img
-                    src={
-                      evt.banner_image_url ||
-                      evt.image ||
-                      'https://images.unsplash.com/photo-1540039155733-5bb30b53aa14?auto=format&fit=crop&q=80&w=600'
-                    }
-                    alt={evt.title}
-                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border border-slate-200 flex-shrink-0 shadow-xs"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                  />
-                  <div className="space-y-1 min-w-0 flex-1">
-                    <h3 className="font-black text-slate-900 text-base truncate">{evt.title}</h3>
-                    <p className="text-xs text-slate-500 font-medium truncate">
-                      {evt.start_time
-                        ? new Date(evt.start_time).toLocaleString('en-US', {
-                            weekday: 'short',
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })
-                        : evt.date || 'Date TBD'}
-                    </p>
-                    <p className="text-xs text-slate-400 font-normal truncate">
-                      {evt.venues?.name || evt.venue || evt.venue_name || (evt.is_online ? 'Online Event' : 'Victoria Island, Lagos')}
-                    </p>
+                {/* Event Image + Info Block */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-5 flex-1 min-w-0">
+                  {/* Event Image with Top Upcoming Badge */}
+                  <div className="relative flex-shrink-0">
+                    <img
+                      src={bannerImg}
+                      alt={evt.title}
+                      className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover border border-slate-200 shadow-xs"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                    <span className="absolute top-2 left-2 px-2.5 py-0.5 bg-[#00b894] text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-xs">
+                      {evt.status === 'PUBLISHED' || !evt.status ? 'Upcoming' : evt.status}
+                    </span>
+                  </div>
+
+                  {/* Info: Title, Venue - Date and Time, Progress Bar */}
+                  <div className="space-y-2.5 flex-1 min-w-0 w-full sm:w-auto">
+                    {/* Event Title */}
+                    <h3 className="font-black text-slate-900 text-base sm:text-lg tracking-tight truncate">
+                      {evt.title}
+                    </h3>
+
+                    {/* Venue - Date & Time */}
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 font-medium">
+                      <span className="inline-flex items-center space-x-1 min-w-0">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                        <span className="truncate">{venueName}</span>
+                      </span>
+                      <span className="text-slate-300 font-bold">-</span>
+                      <span className="inline-flex items-center space-x-1 flex-shrink-0">
+                        <Clock className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                        <span>{dateStr}</span>
+                      </span>
+                    </div>
+
+                    {/* Progress Bar with 0/30 tickets and percentage */}
+                    <div className="space-y-1.5 max-w-md pt-1">
+                      <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200/80">
+                        <div
+                          className="h-full bg-[#00b894] rounded-full transition-all duration-500"
+                          style={{ width: `${Math.max(progressVal > 0 ? 3 : 0, progressVal)}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                        <span className="text-slate-600 font-medium">
+                          <span className="text-slate-900 font-black">{totalSold}</span>/{totalCapacity} Tickets
+                        </span>
+                        <span className="text-[#00b894] font-black">{progressVal}%</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {/* Progress & Performance Metrics */}
-                <div className="flex flex-wrap lg:flex-nowrap items-center gap-4 sm:gap-6">
-                  {/* Progress bar */}
-                  <div className="w-32 sm:w-36 space-y-1.5 flex-shrink-0">
-                    <div className="flex justify-between text-xs font-bold text-slate-700">
-                      <span>Sold</span>
-                      <span className="text-[#00b894] font-black">{progressVal}%</span>
-                    </div>
-                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200/60">
-                      <div
-                        className="h-full bg-[#00b894] rounded-full transition-all duration-500"
-                        style={{ width: `${Math.max(5, progressVal)}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Status Tag */}
-                  <span className="px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full text-xs font-extrabold capitalize flex-shrink-0">
-                    {evt.status || 'Published'}
-                  </span>
-
-                  {/* Tickets counts */}
-                  <div className="text-xs font-medium text-slate-600 space-y-0.5 min-w-[110px] flex-shrink-0">
-                    <div className="font-extrabold text-slate-900">
-                      {totalSold.toLocaleString()} Sold
-                    </div>
-                    <div className="text-slate-400 text-[11px]">
-                      {totalAvail.toLocaleString()} Available
-                    </div>
-                  </div>
-
-                  {/* Velocity badge */}
-                  <span
-                    className={`px-3 py-1 rounded-full text-xs font-extrabold flex items-center space-x-1 flex-shrink-0 ${
-                      isFastSelling
-                        ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
-                        : isAverageSelling
-                        ? 'bg-amber-50 border border-amber-200 text-amber-800'
-                        : 'bg-slate-100 border border-slate-200 text-slate-600'
-                    }`}
-                  >
-                    <span>{isFastSelling ? '⚡ Selling Fast' : isAverageSelling ? '📈 Average Sales' : '📊 Standard'}</span>
-                  </span>
-
-                  {/* Revenue */}
-                  <div className="text-right min-w-[110px] flex-shrink-0">
-                    <span className="text-[11px] text-slate-400 block font-bold uppercase tracking-wider">
+                {/* Right Side: Revenue Top, Amount Underneath, 3 Dots Action */}
+                <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100 flex-shrink-0 gap-3 sm:gap-2 sm:pl-4">
+                  <div className="text-left sm:text-right">
+                    <span className="text-[11px] font-extrabold uppercase text-slate-400 tracking-wider block">
                       Revenue
                     </span>
-                    <span className="text-sm font-black text-slate-900 block">
+                    <span className="text-base sm:text-lg font-black text-slate-900 tracking-tight block">
                       ₦{eventRevenue.toLocaleString()}
                     </span>
                   </div>
 
-                  {/* Action dropdown button */}
-                  <div className="relative event-menu-container flex items-center space-x-2">
-                    <button
-                      onClick={() => setSelectedEventForEdit(evt)}
-                      className="px-3.5 py-2 bg-[#e6faf5] hover:bg-[#d0f5ec] text-[#00b894] text-xs font-extrabold rounded-xl border border-[#a3f0db] transition-colors cursor-pointer"
-                    >
-                      Manage
-                    </button>
-
-                    {/* Three dots menu button */}
+                  {/* 3 Dots Menu Button and Dropdown */}
+                  <div className="relative event-menu-container">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setOpenMenuEventId(isMenuOpen ? null : evt.id);
                       }}
-                      className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                      className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all border border-slate-200/80 cursor-pointer shadow-xs"
                       title="Event Actions"
                     >
                       <MoreVertical className="w-5 h-5" />
