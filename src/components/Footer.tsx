@@ -27,7 +27,11 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
     }
   };
 
-  const handleOrganizerClick = () => {
+  const handleOrganizerSignupClick = () => {
+    window.location.href = '/organizer/signup';
+  };
+
+  const handleOrganizerSignInClick = () => {
     window.location.href = '/organizer';
   };
 
@@ -45,7 +49,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
             </p>
           </div>
           <button
-            onClick={handleOrganizerClick}
+            onClick={handleOrganizerSignupClick}
             className="bg-[#00b894] hover:bg-[#00a383] text-white font-bold px-7 py-3.5 rounded-xl shadow-lg text-xs sm:text-sm transition-all cursor-pointer transform hover:scale-105 flex items-center space-x-2 flex-shrink-0"
           >
             <span>Create An Event</span>
@@ -157,12 +161,12 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
             <h4 className="font-bold text-white uppercase tracking-wider text-[11px]">Organizer</h4>
             <ul className="space-y-2 text-slate-400">
               <li>
-                <button onClick={handleOrganizerClick} className="hover:text-white transition-colors cursor-pointer text-[#00b894] font-medium">
-                  Host an Event
+                <button onClick={handleOrganizerSignupClick} className="hover:text-white transition-colors cursor-pointer text-[#00b894] font-medium">
+                  Host an Event / Join as Organizer
                 </button>
               </li>
               <li>
-                <button onClick={handleOrganizerClick} className="hover:text-white transition-colors cursor-pointer">
+                <button onClick={handleOrganizerSignInClick} className="hover:text-white transition-colors cursor-pointer">
                   Organizer Sign In
                 </button>
               </li>

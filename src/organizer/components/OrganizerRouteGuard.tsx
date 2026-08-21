@@ -7,7 +7,7 @@ interface OrganizerRouteGuardProps {
 }
 
 export const OrganizerRouteGuard: React.FC<OrganizerRouteGuardProps> = ({ children }) => {
-  const { user, isLoading, refreshOrganizations } = useOrganizer();
+  const { user, profile, organizations, isOrganizer, isLoading, refreshOrganizations } = useOrganizer();
 
   // 1. Session or Organization Authorization is still loading
   if (isLoading) {
@@ -19,10 +19,11 @@ export const OrganizerRouteGuard: React.FC<OrganizerRouteGuardProps> = ({ childr
     );
   }
 
-  // 2. Unauthenticated user -> render Organizer Login screen
-  if (!user) {
+  // 2. Unauthenticated user or user with no registered organization -> render Organizer Sign Up screen
+  if (!user || organizations.length === 0) {
     return (
       <OrganizerAuth
+        initialMode="signup"
         onSuccess={() => {
           refreshOrganizations();
         }}

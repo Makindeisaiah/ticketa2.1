@@ -28,7 +28,7 @@ interface OrganizerAuthProps {
 }
 
 export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initialMode = 'signup' }) => {
-  const { signInOrganizer, signUpOrganizer, resendVerificationEmail, isConfigured } = useAuth();
+  const { user: currentAuthUser, signInOrganizer, signUpOrganizer, resendVerificationEmail, isConfigured } = useAuth();
   
   // 'signin' or 'signup'
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
@@ -41,8 +41,8 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
   const [resendMsg, setResendMsg] = useState('');
 
   // Step 1: User Account
-  const [fullName, setFullName] = useState('');
-  const [signUpEmail, setSignUpEmail] = useState('');
+  const [fullName, setFullName] = useState(currentAuthUser?.fullName || '');
+  const [signUpEmail, setSignUpEmail] = useState(currentAuthUser?.email || '');
   const [signUpPassword, setSignUpPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword1, setShowPassword1] = useState(false);
@@ -52,7 +52,16 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
   const [orgName, setOrgName] = useState('');
   const [orgType, setOrgType] = useState('Event Agency');
   const [country, setCountry] = useState('Nigeria');
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState(currentAuthUser?.phoneNumber || '');
+
+  // Keep fields synced if currentAuthUser loads
+  useEffect(() => {
+    if (currentAuthUser) {
+      if (!fullName && currentAuthUser.fullName) setFullName(currentAuthUser.fullName);
+      if (!signUpEmail && currentAuthUser.email) setSignUpEmail(currentAuthUser.email);
+      if (!phoneNumber && currentAuthUser.phoneNumber) setPhoneNumber(currentAuthUser.phoneNumber);
+    }
+  }, [currentAuthUser]);
 
   const countryData: Record<string, { flag: string; code: string; currency: string; currencySymbol: string }> = {
     Nigeria: { flag: '🇳🇬', code: '+234', currency: 'NGN', currencySymbol: '₦' },
@@ -83,6 +92,39 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
     setErrorMsg('');
 
     try {
+      // If user is already authenticated in Supabase as an attendee, create their organizer organization directly
+      if (currentAuthUser?.id && currentAuthUser.email.toLowerCase() === signUpEmail.trim().toLowerCase()) {
+        const orgRes = await createOrganization(currentAuthUser.id, {
+          name: orgName || `${fullName}'s Organization`,
+          type: (orgType === 'Event Agency' ? 'AGENCY' : orgType === 'Registered Business' ? 'BUSINESS' : 'INDIVIDUAL') as any,
+          country: country || 'Nigeria',
+          phone_number: phoneNumber || currentAuthUser.phoneNumber || '',
+        });
+
+        if (orgRes.success && orgRes.organization) {
+          if (includeBankDetails && accountNumber) {
+            try {
+              await addPayoutAccount(orgRes.organization.id, {
+                account_type: accountHolderType === 'Individual' ? 'INDIVIDUAL' : 'BUSINESS',
+                account_holder_name: holderFullName || fullName || currentAuthUser.fullName,
+                bank_name: bankName,
+                bank_code: '058',
+                account_number: accountNumber,
+              });
+            } catch (payoutErr) {
+              console.warn('Payout account setup notice:', payoutErr);
+            }
+          }
+          setLoading(false);
+          if (onSuccess) onSuccess(currentAuthUser);
+          return;
+        } else {
+          setErrorMsg(orgRes.error || 'Failed to create organization. Please try again.');
+          setLoading(false);
+          return;
+        }
+      }
+
       // Store pending organization setup in localStorage so it persists until email verification + login
       const pendingKey = `pending_organizer_${signUpEmail.trim().toLowerCase()}`;
       localStorage.setItem(
