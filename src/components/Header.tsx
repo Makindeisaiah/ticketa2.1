@@ -97,14 +97,6 @@ export const Header: React.FC<HeaderProps> = ({ currentView, onNavigate, myTicke
                 </span>
               )}
             </button>
-
-            <button
-              onClick={() => { window.location.href = '/organizer/signup'; }}
-              className="text-xs font-bold text-[#00b894] hover:text-[#00a383] bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/60 px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center space-x-1.5"
-            >
-              <Building2 className="w-3.5 h-3.5" />
-              <span>Join as Organizer</span>
-            </button>
           </nav>
 
           {/* Right Navigation & Authentication buttons */}
@@ -152,14 +144,6 @@ export const Header: React.FC<HeaderProps> = ({ currentView, onNavigate, myTicke
                     >
                       <User className="w-4 h-4 text-[#00b894]" />
                       <span>Profile &amp; Settings</span>
-                    </button>
-
-                    <button
-                      onClick={() => { setIsDropdownOpen(false); window.location.href = '/organizer/signup'; }}
-                      className="w-full text-left px-4 py-2 text-xs text-[#00b894] hover:bg-emerald-50 flex items-center space-x-2 font-bold cursor-pointer"
-                    >
-                      <Building2 className="w-4 h-4" />
-                      <span>Join as Organizer</span>
                     </button>
 
                     <div className="border-t border-slate-100 mt-1 pt-1">
@@ -248,14 +232,6 @@ export const Header: React.FC<HeaderProps> = ({ currentView, onNavigate, myTicke
                 {myTicketsCount}
               </span>
             )}
-          </button>
-
-          <button
-            onClick={() => { setIsMobileMenuOpen(false); window.location.href = '/organizer/signup'; }}
-            className="w-full text-left px-3 py-2 text-sm font-bold rounded-xl text-[#00b894] bg-emerald-50 hover:bg-emerald-100 flex items-center space-x-2"
-          >
-            <Building2 className="w-4 h-4" />
-            <span>Join as Organizer</span>
           </button>
 
           <div className="border-t border-slate-100 pt-3">

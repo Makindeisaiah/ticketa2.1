@@ -78,7 +78,6 @@ function MainAppContent() {
   const [checkoutPayload, setCheckoutPayload] = useState<OrderCheckoutPayload | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
   const [activeWalletOrder, setActiveWalletOrder] = useState<CompletedOrderResult | null>(null);
-  const [activeWalletTicketCode, setActiveWalletTicketCode] = useState<string | undefined>(undefined);
 
   // Return view state for post-login redirect
   const [redirectAfterAuth, setRedirectAfterAuth] = useState<AppView | null>(null);
@@ -337,10 +336,7 @@ function MainAppContent() {
 
         {currentView === 'my-tickets' && (
           <MyTicketsPage
-            onViewTicketWallet={(ord, tktCode) => {
-              setActiveWalletOrder(ord);
-              setActiveWalletTicketCode(tktCode);
-            }}
+            onViewTicketWallet={(ord) => setActiveWalletOrder(ord)}
             onNavigateToBrowse={() => handleNavigate('browse')}
           />
         )}
@@ -488,11 +484,7 @@ function MainAppContent() {
       {activeWalletOrder && (
         <TicketWalletModal
           order={activeWalletOrder}
-          selectedTicketCode={activeWalletTicketCode}
-          onClose={() => {
-            setActiveWalletOrder(null);
-            setActiveWalletTicketCode(undefined);
-          }}
+          onClose={() => setActiveWalletOrder(null)}
         />
       )}
 

@@ -11,7 +11,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   onNavigateToSignIn,
   onSuccessRedirect,
 }) => {
-  const { signUpAttendee, resendVerificationEmail, isConfigured } = useAuth();
+  const { signUpAttendee, isConfigured } = useAuth();
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -22,8 +22,6 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isSuccessUnverified, setIsSuccessUnverified] = useState(false);
-  const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
-  const [resendMsg, setResendMsg] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,20 +76,6 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
     }
   };
 
-  const handleResend = async () => {
-    if (!email.trim()) return;
-    setResendStatus('sending');
-    setResendMsg('');
-    const res = await resendVerificationEmail(email, '/');
-    if (res.success) {
-      setResendStatus('sent');
-      setResendMsg('Verification email resent! Please check your inbox and spam folder.');
-    } else {
-      setResendStatus('error');
-      setResendMsg(res.error || 'Failed to resend verification email.');
-    }
-  };
-
   if (isSuccessUnverified) {
     return (
       <div className="min-h-[calc(100vh-80px)] bg-slate-50 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -107,23 +91,6 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
             </p>
           </div>
 
-          {resendMsg && (
-            <div
-              className={`p-2.5 rounded-xl text-xs flex items-start space-x-1.5 text-left ${
-                resendStatus === 'sent'
-                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                  : 'bg-rose-50 text-rose-800 border border-rose-200'
-              }`}
-            >
-              {resendStatus === 'sent' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
-              )}
-              <span>{resendMsg}</span>
-            </div>
-          )}
-
           <div className="bg-slate-50 p-4 rounded-xl text-xs text-slate-600 text-left space-y-2 border border-slate-200">
             <span className="font-bold text-slate-900 block">Next steps:</span>
             <ol className="list-decimal pl-4 space-y-1">
@@ -132,22 +99,12 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
             </ol>
           </div>
 
-          <div className="space-y-2 pt-1">
-            <button
-              onClick={onNavigateToSignIn}
-              className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-bold text-xs sm:text-sm py-3 px-4 rounded-xl cursor-pointer transition-colors shadow-xs"
-            >
-              Go to Sign In
-            </button>
-
-            <button
-              onClick={handleResend}
-              disabled={resendStatus === 'sending'}
-              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs py-2.5 rounded-xl cursor-pointer transition-all"
-            >
-              {resendStatus === 'sending' ? 'Sending link...' : 'Resend Verification Email'}
-            </button>
-          </div>
+          <button
+            onClick={onNavigateToSignIn}
+            className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-bold text-xs sm:text-sm py-3 px-4 rounded-xl cursor-pointer transition-colors shadow-xs"
+          >
+            Go to Sign In
+          </button>
         </div>
       </div>
     );

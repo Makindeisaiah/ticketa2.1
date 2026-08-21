@@ -236,7 +236,7 @@ export const HowItWorksPage: React.FC<HowItWorksPageProps> = ({ onNavigate }) =>
             <div className="text-center pt-4">
               <button
                 onClick={() => {
-                  window.location.href = '/organizer/signup';
+                  window.location.href = '/organizer';
                 }}
                 className="bg-[#00b894] hover:bg-[#00a383] text-white font-bold px-8 py-3.5 rounded-xl shadow-md transition-all cursor-pointer text-sm"
               >

@@ -39,13 +39,13 @@ export interface AuthContextType {
   clearAuthNotification: () => void;
   signUpAttendee: (data: SignUpAttendeeData) => Promise<{ success: boolean; requiresEmailVerification?: boolean; error?: string }>;
   signUpOrganizer: (data: SignUpOrganizerData) => Promise<{ success: boolean; requiresEmailVerification?: boolean; user?: AuthUser; error?: string }>;
-  signIn: (data: SignInData) => Promise<{ success: boolean; user?: AuthUser; error?: string; isUnverified?: boolean }>;
-  signInAttendee: (data: { email: string; password: string }) => Promise<{ success: boolean; user?: AuthUser; error?: string; isUnverified?: boolean }>;
-  signInOrganizer: (data: { email: string; password: string }) => Promise<{ success: boolean; user?: AuthUser; error?: string; isUnverified?: boolean }>;
+  signIn: (data: SignInData) => Promise<{ success: boolean; user?: AuthUser; error?: string }>;
+  signInAttendee: (data: { email: string; password: string }) => Promise<{ success: boolean; user?: AuthUser; error?: string }>;
+  signInOrganizer: (data: { email: string; password: string }) => Promise<{ success: boolean; user?: AuthUser; error?: string }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   updatePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
-  resendVerificationEmail: (email: string, redirectTo?: string) => Promise<{ success: boolean; error?: string }>;
+  resendVerificationEmail: (email: string) => Promise<{ success: boolean; error?: string }>;
   refreshProfile: () => Promise<void>;
 }
 
@@ -307,63 +307,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } = await supabase.auth.getSession();
 
           if (mounted) {
+            setSession(currentSession);
             if (currentSession?.user) {
-              const isConfirmed = Boolean(
-                currentSession.user.email_confirmed_at || (currentSession.user as any).confirmed_at
+              const { authUser, type, attProfile, orgProfile } = await fetchUserAccountAndProfiles(
+                currentSession.user
               );
+              setUser(authUser);
+              setAccountType(type);
+              setAttendeeProfile(attProfile);
+              setOrganizerProfile(orgProfile);
 
-              // If unverified and not currently completing an auth callback, block session
-              if (!isConfirmed && !isAuthCallback) {
+              if (isAuthCallback) {
+                let destination = type === 'ORGANIZER' ? '/organizer' : '/';
                 try {
-                  await supabase.auth.signOut();
-                } catch (e) {}
-                setSession(null);
-                setUser(null);
-                setAccountType(null);
-                setAttendeeProfile(null);
-                setOrganizerProfile(null);
-              } else {
-                setSession(currentSession);
-                const { authUser, type, attProfile, orgProfile } = await fetchUserAccountAndProfiles(
-                  currentSession.user
-                );
-                setUser(authUser);
-                setAccountType(type);
-                setAttendeeProfile(attProfile);
-                setOrganizerProfile(orgProfile);
-
-                if (isAuthCallback) {
-                  let destination = type === 'ORGANIZER' ? '/organizer' : '/';
-                  try {
-                    const urlObj = new URL(href);
-                    const redirectParam = urlObj.searchParams.get('redirect');
-                    if (redirectParam) {
-                      destination = redirectParam;
-                    } else if (type === 'ORGANIZER' || href.includes('/organizer')) {
-                      destination = '/organizer';
-                    }
-                  } catch (e) {}
-
-                  if (href.includes('type=recovery')) {
-                    setAuthNotification({
-                      type: 'info',
-                      message: 'Authenticated via password reset link. Please update your password below.',
-                    });
-                  } else {
-                    setAuthNotification({
-                      type: 'success',
-                      message: 'Your email address has been verified successfully! You are now logged in.',
-                    });
+                  const urlObj = new URL(href);
+                  const redirectParam = urlObj.searchParams.get('redirect');
+                  if (redirectParam) {
+                    destination = redirectParam;
+                  } else if (type === 'ORGANIZER' || href.includes('/organizer')) {
+                    destination = '/organizer';
                   }
+                } catch (e) {}
 
-                  window.history.replaceState({}, document.title, destination);
-                  window.dispatchEvent(new Event('popstate'));
+                if (href.includes('type=recovery')) {
+                  setAuthNotification({
+                    type: 'info',
+                    message: 'Authenticated via password reset link. Please update your password below.',
+                  });
+                } else {
+                  setAuthNotification({
+                    type: 'success',
+                    message: 'Your email address has been verified successfully! You are now logged in.',
+                  });
                 }
+
+                window.history.replaceState({}, document.title, destination);
+                window.dispatchEvent(new Event('popstate'));
               }
-            } else {
-              setSession(null);
-              setUser(null);
-              setAccountType(null);
             }
           }
         } catch (e) {
@@ -384,31 +364,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         data: { subscription },
       } = supabase.auth.onAuthStateChange(async (event, newSession) => {
         if (!mounted) return;
+        setSession(newSession);
 
         if (newSession?.user) {
-          const isConfirmed = Boolean(
-            newSession.user.email_confirmed_at || (newSession.user as any).confirmed_at
-          );
-
-          const href = window.location.href;
-          const isCallback =
-            href.includes('type=signup') ||
-            href.includes('/auth/callback') ||
-            href.includes('/callback') ||
-            href.includes('code=');
-
-          if (!isConfirmed && !isCallback) {
-            // Unconfirmed session detected - clear active state
-            setSession(null);
-            setUser(null);
-            setAccountType(null);
-            setAttendeeProfile(null);
-            setOrganizerProfile(null);
-            setLoading(false);
-            return;
-          }
-
-          setSession(newSession);
           const { authUser, type, attProfile, orgProfile } = await fetchUserAccountAndProfiles(newSession.user);
           setUser(authUser);
           setAccountType(type);
@@ -416,7 +374,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setOrganizerProfile(orgProfile);
 
           if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
-            if (isCallback) {
+            const href = window.location.href;
+            if (
+              href.includes('type=signup') ||
+              href.includes('/auth/callback') ||
+              href.includes('/callback') ||
+              href.includes('code=')
+            ) {
               let destination = type === 'ORGANIZER' ? '/organizer' : '/';
               try {
                 const urlObj = new URL(href);
@@ -444,7 +408,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }
         } else {
-          setSession(null);
           setUser(null);
           setAccountType(null);
           setAttendeeProfile(null);
@@ -533,44 +496,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
         } catch (e) {}
 
-        const isEmailConfirmed = Boolean(data.user.email_confirmed_at || (data.user as any).confirmed_at);
-
-        if (!isEmailConfirmed) {
-          // Explicitly clear session and sign out unverified user to enforce email confirmation
-          try {
-            await supabase.auth.signOut();
-          } catch (e) {}
-          setSession(null);
-          setUser(null);
-          setAccountType(null);
-          setAttendeeProfile(null);
-          setOrganizerProfile(null);
-
-          return {
-            success: true,
-            requiresEmailVerification: true,
-          };
-        }
-
-        const authUser: AuthUser = {
-          id: data.user.id,
-          email: data.user.email || email,
-          fullName: fullName.trim(),
-          phoneNumber: phoneNumber.trim(),
-          accountType: 'ATTENDEE',
-          role: 'ATTENDEE',
-          isEmailVerified: true,
-        };
+        const requiresVerification = !data.session && !data.user.email_confirmed_at;
 
         if (data.session) {
           setSession(data.session);
-          setUser(authUser);
+          setUser({
+            id: data.user.id,
+            email: data.user.email || email,
+            fullName: fullName.trim(),
+            phoneNumber: phoneNumber.trim(),
+            accountType: 'ATTENDEE',
+            role: 'ATTENDEE',
+            isEmailVerified: Boolean(data.user.email_confirmed_at),
+          });
           setAccountType('ATTENDEE');
         }
 
         return {
           success: true,
-          requiresEmailVerification: false,
+          requiresEmailVerification: requiresVerification,
         };
       }
 
@@ -652,24 +596,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
         } catch (e) {}
 
-        const isEmailConfirmed = Boolean(data.user.email_confirmed_at || (data.user as any).confirmed_at);
-
-        if (!isEmailConfirmed) {
-          // Explicitly clear session and sign out unverified user to enforce email confirmation
-          try {
-            await supabase.auth.signOut();
-          } catch (e) {}
-          setSession(null);
-          setUser(null);
-          setAccountType(null);
-          setAttendeeProfile(null);
-          setOrganizerProfile(null);
-
-          return {
-            success: true,
-            requiresEmailVerification: true,
-          };
-        }
+        const requiresVerification = !data.session && !data.user.email_confirmed_at;
 
         const authUser: AuthUser = {
           id: data.user.id,
@@ -678,7 +605,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           phoneNumber: phoneNumber.trim(),
           accountType: 'ORGANIZER',
           role: 'ORGANIZER',
-          isEmailVerified: true,
+          isEmailVerified: Boolean(data.user.email_confirmed_at),
         };
 
         if (data.session) {
@@ -690,7 +617,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return {
           success: true,
           user: authUser,
-          requiresEmailVerification: false,
+          requiresEmailVerification: requiresVerification,
         };
       }
 
@@ -700,7 +627,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // 3. ATTENDEE SIGNIN (STRICT ISOLATION & VERIFICATION CHECK)
+  // 3. ATTENDEE SIGNIN (STRICT ISOLATION CHECK)
   const signInAttendee = async ({ email, password }: { email: string; password: string }) => {
     if (!email.trim() || !password) {
       return { success: false, error: 'Email and password are required.' };
@@ -720,40 +647,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
-        if (
-          error.message.toLowerCase().includes('email not confirmed') ||
-          error.message.toLowerCase().includes('not confirmed') ||
-          error.message.toLowerCase().includes('unconfirmed') ||
-          error.message.toLowerCase().includes('not verified')
-        ) {
-          return {
-            success: false,
-            error: 'Your email address has not been verified yet. Please check your inbox (and spam folder) for the verification link before logging in.',
-            isUnverified: true,
-          };
-        }
         return { success: false, error: error.message };
       }
 
       if (data.user) {
-        const isConfirmed = Boolean(data.user.email_confirmed_at || (data.user as any).confirmed_at);
-        if (!isConfirmed) {
-          // Force sign out and block login
-          try {
-            await supabase.auth.signOut();
-          } catch (e) {}
-          setUser(null);
-          setSession(null);
-          setAccountType(null);
-          setAttendeeProfile(null);
-          setOrganizerProfile(null);
-          return {
-            success: false,
-            error: 'Your email address has not been verified yet. Please check your inbox (and spam folder) for the verification link before logging in.',
-            isUnverified: true,
-          };
-        }
-
         // Strict portal isolation validation
         const { authUser, type, attProfile, orgProfile } = await fetchUserAccountAndProfiles(data.user);
 
@@ -784,7 +681,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // 4. ORGANIZER SIGNIN (STRICT ISOLATION & VERIFICATION CHECK)
+  // 4. ORGANIZER SIGNIN (STRICT ISOLATION CHECK)
   const signInOrganizer = async ({ email, password }: { email: string; password: string }) => {
     if (!email.trim() || !password) {
       return { success: false, error: 'Email and password are required.' };
@@ -804,40 +701,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
-        if (
-          error.message.toLowerCase().includes('email not confirmed') ||
-          error.message.toLowerCase().includes('not confirmed') ||
-          error.message.toLowerCase().includes('unconfirmed') ||
-          error.message.toLowerCase().includes('not verified')
-        ) {
-          return {
-            success: false,
-            error: 'Your organizer email address has not been verified yet. Please check your inbox (and spam folder) for the verification link before logging in.',
-            isUnverified: true,
-          };
-        }
         return { success: false, error: error.message };
       }
 
       if (data.user) {
-        const isConfirmed = Boolean(data.user.email_confirmed_at || (data.user as any).confirmed_at);
-        if (!isConfirmed) {
-          // Force sign out and block login
-          try {
-            await supabase.auth.signOut();
-          } catch (e) {}
-          setUser(null);
-          setSession(null);
-          setAccountType(null);
-          setAttendeeProfile(null);
-          setOrganizerProfile(null);
-          return {
-            success: false,
-            error: 'Your organizer email address has not been verified yet. Please check your inbox (and spam folder) for the verification link before logging in.',
-            isUnverified: true,
-          };
-        }
-
         // Strict portal isolation validation
         const { authUser, type, attProfile, orgProfile } = await fetchUserAccountAndProfiles(data.user);
 
@@ -943,22 +810,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // 9. RESEND VERIFICATION EMAIL
-  const resendVerificationEmail = async (email: string, redirectTo: string = '/') => {
+  const resendVerificationEmail = async (email: string) => {
     if (!email || !email.trim()) {
       return { success: false, error: 'Email address is required.' };
     }
 
     if (isSupabaseConfigured) {
       try {
-        const redirectUrl = redirectTo.startsWith('http')
-          ? redirectTo
-          : `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`;
-
         const { error } = await supabase.auth.resend({
           type: 'signup',
           email: email.trim().toLowerCase(),
           options: {
-            emailRedirectTo: redirectUrl,
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
           },
         });
         if (error) {

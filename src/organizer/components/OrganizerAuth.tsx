@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Mail,
   Lock,
@@ -28,7 +28,7 @@ interface OrganizerAuthProps {
 }
 
 export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initialMode = 'signup' }) => {
-  const { user: currentAuthUser, signInOrganizer, signUpOrganizer, resendVerificationEmail, isConfigured } = useAuth();
+  const { signInOrganizer, signUpOrganizer, resendVerificationEmail, isConfigured } = useAuth();
   
   // 'signin' or 'signup'
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
@@ -41,8 +41,8 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
   const [resendMsg, setResendMsg] = useState('');
 
   // Step 1: User Account
-  const [fullName, setFullName] = useState(currentAuthUser?.fullName || '');
-  const [signUpEmail, setSignUpEmail] = useState(currentAuthUser?.email || '');
+  const [fullName, setFullName] = useState('');
+  const [signUpEmail, setSignUpEmail] = useState('');
   const [signUpPassword, setSignUpPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword1, setShowPassword1] = useState(false);
@@ -52,16 +52,7 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
   const [orgName, setOrgName] = useState('');
   const [orgType, setOrgType] = useState('Event Agency');
   const [country, setCountry] = useState('Nigeria');
-  const [phoneNumber, setPhoneNumber] = useState(currentAuthUser?.phoneNumber || '');
-
-  // Keep fields synced if currentAuthUser loads
-  useEffect(() => {
-    if (currentAuthUser) {
-      if (!fullName && currentAuthUser.fullName) setFullName(currentAuthUser.fullName);
-      if (!signUpEmail && currentAuthUser.email) setSignUpEmail(currentAuthUser.email);
-      if (!phoneNumber && currentAuthUser.phoneNumber) setPhoneNumber(currentAuthUser.phoneNumber);
-    }
-  }, [currentAuthUser]);
+  const [phoneNumber, setPhoneNumber] = useState('');
 
   const countryData: Record<string, { flag: string; code: string; currency: string; currencySymbol: string }> = {
     Nigeria: { flag: '🇳🇬', code: '+234', currency: 'NGN', currencySymbol: '₦' },
@@ -160,8 +151,8 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
         setLoading(false);
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'An unexpected error occurred during setup.');
       setLoading(false);
+      setErrorMsg(err.message || 'An error occurred during account registration.');
     }
   };
 
@@ -248,15 +239,14 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
     }
   };
 
-  const handleResendVerification = async (targetEmail?: string) => {
-    const emailToUse = targetEmail || signUpEmail || signInEmail;
-    if (!emailToUse) return;
+  const handleResendVerification = async () => {
+    if (!signUpEmail) return;
     setResendStatus('sending');
     setResendMsg('');
-    const res = await resendVerificationEmail(emailToUse, '/organizer');
+    const res = await resendVerificationEmail(signUpEmail);
     if (res.success) {
       setResendStatus('sent');
-      setResendMsg(`Verification email resent to ${emailToUse}! Please check your inbox and spam folder.`);
+      setResendMsg('Verification email resent successfully! Please check your inbox and spam folder.');
     } else {
       setResendStatus('error');
       setResendMsg(res.error || 'Failed to resend verification email.');
@@ -317,7 +307,7 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
             </button>
 
             <button
-              onClick={() => handleResendVerification()}
+              onClick={handleResendVerification}
               disabled={resendStatus === 'sending'}
               className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 px-4 rounded-xl cursor-pointer transition-all text-xs"
             >
@@ -347,31 +337,9 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
             </div>
 
             {errorMsg && (
-              <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-700 space-y-2">
-                <div className="flex items-start space-x-2.5">
-                  <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-                  <span className="leading-relaxed">{errorMsg}</span>
-                </div>
-                {(errorMsg.toLowerCase().includes('not been verified') ||
-                  errorMsg.toLowerCase().includes('verification link') ||
-                  errorMsg.toLowerCase().includes('unverified')) && (
-                  <div className="pt-2 border-t border-rose-200/60 flex items-center justify-between">
-                    <span className="text-[11px] text-rose-600">Need another confirmation email?</span>
-                    <button
-                      type="button"
-                      onClick={() => handleResendVerification(signInEmail || signUpEmail)}
-                      disabled={resendStatus === 'sending'}
-                      className="text-xs font-bold text-[#00b894] hover:text-[#00a383] underline cursor-pointer disabled:opacity-50"
-                    >
-                      {resendStatus === 'sending' ? 'Sending link...' : 'Resend Verification Link'}
-                    </button>
-                  </div>
-                )}
-                {resendMsg && (
-                  <div className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 p-2 rounded-lg border border-emerald-200">
-                    {resendMsg}
-                  </div>
-                )}
+              <div className="mb-6 p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-700 flex items-start space-x-2.5">
+                <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
+                <span>{errorMsg}</span>
               </div>
             )}
 
