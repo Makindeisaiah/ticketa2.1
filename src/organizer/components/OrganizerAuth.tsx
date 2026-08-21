@@ -92,39 +92,6 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
     setErrorMsg('');
 
     try {
-      // If user is already authenticated in Supabase as an attendee, create their organizer organization directly
-      if (currentAuthUser?.id && currentAuthUser.email.toLowerCase() === signUpEmail.trim().toLowerCase()) {
-        const orgRes = await createOrganization(currentAuthUser.id, {
-          name: orgName || `${fullName}'s Organization`,
-          type: (orgType === 'Event Agency' ? 'AGENCY' : orgType === 'Registered Business' ? 'BUSINESS' : 'INDIVIDUAL') as any,
-          country: country || 'Nigeria',
-          phone_number: phoneNumber || currentAuthUser.phoneNumber || '',
-        });
-
-        if (orgRes.success && orgRes.organization) {
-          if (includeBankDetails && accountNumber) {
-            try {
-              await addPayoutAccount(orgRes.organization.id, {
-                account_type: accountHolderType === 'Individual' ? 'INDIVIDUAL' : 'BUSINESS',
-                account_holder_name: holderFullName || fullName || currentAuthUser.fullName,
-                bank_name: bankName,
-                bank_code: '058',
-                account_number: accountNumber,
-              });
-            } catch (payoutErr) {
-              console.warn('Payout account setup notice:', payoutErr);
-            }
-          }
-          setLoading(false);
-          if (onSuccess) onSuccess(currentAuthUser);
-          return;
-        } else {
-          setErrorMsg(orgRes.error || 'Failed to create organization. Please try again.');
-          setLoading(false);
-          return;
-        }
-      }
-
       // Store pending organization setup in localStorage so it persists until email verification + login
       const pendingKey = `pending_organizer_${signUpEmail.trim().toLowerCase()}`;
       localStorage.setItem(
@@ -193,8 +160,8 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
         setLoading(false);
       }
     } catch (err: any) {
+      setErrorMsg(err.message || 'An unexpected error occurred during setup.');
       setLoading(false);
-      setErrorMsg(err.message || 'An error occurred during account registration.');
     }
   };
 
@@ -281,14 +248,15 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
     }
   };
 
-  const handleResendVerification = async () => {
-    if (!signUpEmail) return;
+  const handleResendVerification = async (targetEmail?: string) => {
+    const emailToUse = targetEmail || signUpEmail || signInEmail;
+    if (!emailToUse) return;
     setResendStatus('sending');
     setResendMsg('');
-    const res = await resendVerificationEmail(signUpEmail);
+    const res = await resendVerificationEmail(emailToUse, '/organizer');
     if (res.success) {
       setResendStatus('sent');
-      setResendMsg('Verification email resent successfully! Please check your inbox and spam folder.');
+      setResendMsg(`Verification email resent to ${emailToUse}! Please check your inbox and spam folder.`);
     } else {
       setResendStatus('error');
       setResendMsg(res.error || 'Failed to resend verification email.');
@@ -349,7 +317,7 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
             </button>
 
             <button
-              onClick={handleResendVerification}
+              onClick={() => handleResendVerification()}
               disabled={resendStatus === 'sending'}
               className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 px-4 rounded-xl cursor-pointer transition-all text-xs"
             >
@@ -379,9 +347,31 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
             </div>
 
             {errorMsg && (
-              <div className="mb-6 p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-700 flex items-start space-x-2.5">
-                <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-                <span>{errorMsg}</span>
+              <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-700 space-y-2">
+                <div className="flex items-start space-x-2.5">
+                  <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
+                  <span className="leading-relaxed">{errorMsg}</span>
+                </div>
+                {(errorMsg.toLowerCase().includes('not been verified') ||
+                  errorMsg.toLowerCase().includes('verification link') ||
+                  errorMsg.toLowerCase().includes('unverified')) && (
+                  <div className="pt-2 border-t border-rose-200/60 flex items-center justify-between">
+                    <span className="text-[11px] text-rose-600">Need another confirmation email?</span>
+                    <button
+                      type="button"
+                      onClick={() => handleResendVerification(signInEmail || signUpEmail)}
+                      disabled={resendStatus === 'sending'}
+                      className="text-xs font-bold text-[#00b894] hover:text-[#00a383] underline cursor-pointer disabled:opacity-50"
+                    >
+                      {resendStatus === 'sending' ? 'Sending link...' : 'Resend Verification Link'}
+                    </button>
+                  </div>
+                )}
+                {resendMsg && (
+                  <div className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 p-2 rounded-lg border border-emerald-200">
+                    {resendMsg}
+                  </div>
+                )}
               </div>
             )}
 

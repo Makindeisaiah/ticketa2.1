@@ -13,18 +13,21 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   onNavigateToForgotPassword,
   onSuccessRedirect,
 }) => {
-  const { signInAttendee, isConfigured } = useAuth();
+  const { signInAttendee, resendVerificationEmail, isConfigured } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [showUnverifiedNotice, setShowUnverifiedNotice] = useState(false);
+  const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [resendMsg, setResendMsg] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setShowUnverifiedNotice(false);
+    setResendMsg('');
 
     if (!email.trim() || !password) {
       setErrorMsg('Please enter both email address and password.');
@@ -42,11 +45,30 @@ export const SignInPage: React.FC<SignInPageProps> = ({
         onSuccessRedirect();
       }
     } else {
-      if (result.error?.toLowerCase().includes('email not confirmed')) {
+      if (
+        result.isUnverified ||
+        result.error?.toLowerCase().includes('not been verified') ||
+        result.error?.toLowerCase().includes('email not confirmed') ||
+        result.error?.toLowerCase().includes('verification link')
+      ) {
         setShowUnverifiedNotice(true);
       } else {
         setErrorMsg(result.error || 'Invalid email or password.');
       }
+    }
+  };
+
+  const handleResend = async () => {
+    if (!email.trim()) return;
+    setResendStatus('sending');
+    setResendMsg('');
+    const res = await resendVerificationEmail(email, '/');
+    if (res.success) {
+      setResendStatus('sent');
+      setResendMsg('Verification email resent! Please check your inbox and spam folder.');
+    } else {
+      setResendStatus('error');
+      setResendMsg(res.error || 'Failed to resend verification email.');
     }
   };
 
@@ -92,14 +114,41 @@ export const SignInPage: React.FC<SignInPageProps> = ({
           )}
 
           {showUnverifiedNotice && (
-            <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 space-y-2">
+            <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 space-y-2.5">
               <div className="flex items-center space-x-2 font-bold text-amber-900">
                 <AlertCircle className="w-4 h-4 text-amber-600" />
                 <span>Email Verification Required</span>
               </div>
-              <p>
-                Your email address has not been confirmed yet. Please check your email inbox for the Supabase confirmation link before logging in.
+              <p className="leading-relaxed">
+                Your email address (<strong className="text-amber-950">{email}</strong>) has not been verified yet. Please check your inbox (and spam folder) for the verification link before logging in.
               </p>
+              {resendMsg && (
+                <div
+                  className={`p-2.5 rounded-lg text-xs flex items-center space-x-1.5 ${
+                    resendStatus === 'sent'
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      : 'bg-rose-100 text-rose-800 border border-rose-300'
+                  }`}
+                >
+                  {resendStatus === 'sent' ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
+                  )}
+                  <span>{resendMsg}</span>
+                </div>
+              )}
+              <div className="pt-1 flex items-center justify-between border-t border-amber-200/70">
+                <span className="text-[11px] text-amber-800 font-medium">Didn’t get the email?</span>
+                <button
+                  type="button"
+                  onClick={handleResend}
+                  disabled={resendStatus === 'sending'}
+                  className="font-bold text-[#00b894] hover:text-[#00a383] underline cursor-pointer disabled:opacity-50"
+                >
+                  {resendStatus === 'sending' ? 'Sending link...' : 'Resend Verification Link'}
+                </button>
+              </div>
             </div>
           )}
 
