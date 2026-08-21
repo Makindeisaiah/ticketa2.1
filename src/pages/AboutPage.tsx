@@ -187,11 +187,11 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
             </button>
             <button
               onClick={() => {
-                window.location.href = '/organizer';
+                window.location.href = '/organizer/signup';
               }}
               className="bg-white/10 hover:bg-white/20 text-white font-bold px-6 py-3 rounded-xl transition-all cursor-pointer text-xs sm:text-sm border border-white/20"
             >
-              Host An Event
+              Host An Event / Join as Organizer
             </button>
           </div>
         </div>
