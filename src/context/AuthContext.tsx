@@ -64,88 +64,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Helper to determine and load account type & profile
   const fetchUserAccountAndProfiles = async (
-    supabaseUser: User
+    supabaseUser: User,
+    preferredPortal?: 'ATTENDEE' | 'ORGANIZER'
   ): Promise<{
     authUser: AuthUser;
     type: AccountType;
     attProfile: AttendeeProfile | null;
     orgProfile: OrganizerProfile | null;
   }> => {
-    let determinedType: AccountType = 'ATTENDEE';
+    let determinedType: AccountType = preferredPortal || 'ATTENDEE';
     let fullName = (supabaseUser.user_metadata?.full_name as string) || '';
     let phoneNumber = (supabaseUser.user_metadata?.phone_number as string) || '';
     let attProfile: AttendeeProfile | null = null;
     let orgProfile: OrganizerProfile | null = null;
 
-    // First check user metadata
-    const metaAccountType = (supabaseUser.user_metadata?.account_type || supabaseUser.user_metadata?.role) as string;
-    if (metaAccountType && ['ORGANIZER', 'ADMIN'].includes(metaAccountType.toUpperCase())) {
-      determinedType = metaAccountType.toUpperCase() === 'ADMIN' ? 'ADMIN' : 'ORGANIZER';
-    }
-
     if (isSupabaseConfigured) {
       try {
-        // 1. Query public.account_types
-        const { data: accountTypeData } = await supabase
-          .from('account_types')
-          .select('account_type')
-          .eq('user_id', supabaseUser.id)
-          .maybeSingle();
+        // Query account_types and both profile tables in parallel
+        const [{ data: accountTypeData }, { data: attData }, { data: orgData }] = await Promise.all([
+          supabase.from('account_types').select('account_type').eq('user_id', supabaseUser.id).maybeSingle(),
+          supabase.from('attendee_profiles').select('*').eq('id', supabaseUser.id).maybeSingle(),
+          supabase.from('organizer_profiles').select('*').eq('id', supabaseUser.id).maybeSingle(),
+        ]);
+
+        if (attData) {
+          attProfile = attData as AttendeeProfile;
+          if (attData.full_name) fullName = attData.full_name;
+          if (attData.phone_number) phoneNumber = attData.phone_number;
+        }
+
+        if (orgData) {
+          orgProfile = orgData as OrganizerProfile;
+          if (!fullName && orgData.full_name) fullName = orgData.full_name;
+          if (!phoneNumber && orgData.phone_number) phoneNumber = orgData.phone_number;
+        }
 
         if (accountTypeData?.account_type) {
           determinedType = accountTypeData.account_type as AccountType;
-        }
-
-        // 2. Fetch appropriate profile table
-        if (determinedType === 'ORGANIZER' || determinedType === 'ADMIN') {
-          const { data: orgData } = await supabase
-            .from('organizer_profiles')
-            .select('*')
-            .eq('id', supabaseUser.id)
-            .maybeSingle();
-
-          if (orgData) {
-            orgProfile = orgData as OrganizerProfile;
-            fullName = orgData.full_name || fullName;
-            phoneNumber = orgData.phone_number || phoneNumber;
-          } else {
-            // Check legacy profiles if organizer_profiles not yet migrated
-            const { data: legacyProfile } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', supabaseUser.id)
-              .maybeSingle();
-
-            if (legacyProfile && ['ORGANIZER', 'ADMIN', 'STAFF'].includes(legacyProfile.role)) {
-              fullName = legacyProfile.full_name || fullName;
-              phoneNumber = legacyProfile.phone_number || phoneNumber;
-              determinedType = legacyProfile.role === 'ADMIN' ? 'ADMIN' : 'ORGANIZER';
-            }
-          }
+        } else if (orgData && !attData) {
+          determinedType = 'ORGANIZER';
+        } else if (attData && !orgData) {
+          determinedType = 'ATTENDEE';
+        } else if (preferredPortal) {
+          determinedType = preferredPortal;
         } else {
-          // Attendee
-          const { data: attData } = await supabase
-            .from('attendee_profiles')
-            .select('*')
-            .eq('id', supabaseUser.id)
-            .maybeSingle();
-
-          if (attData) {
-            attProfile = attData as AttendeeProfile;
-            fullName = attData.full_name || fullName;
-            phoneNumber = attData.phone_number || phoneNumber;
+          // Check metadata as last resort
+          const metaAccountType = (supabaseUser.user_metadata?.account_type || supabaseUser.user_metadata?.role) as string;
+          if (metaAccountType && ['ORGANIZER', 'ADMIN'].includes(metaAccountType.toUpperCase())) {
+            determinedType = metaAccountType.toUpperCase() === 'ADMIN' ? 'ADMIN' : 'ORGANIZER';
           } else {
-            // Check legacy profiles if attendee_profiles not yet populated
-            const { data: legacyProfile } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', supabaseUser.id)
-              .maybeSingle();
-
-            if (legacyProfile) {
-              fullName = legacyProfile.full_name || fullName;
-              phoneNumber = legacyProfile.phone_number || phoneNumber;
-            }
+            determinedType = 'ATTENDEE';
           }
         }
       } catch (e) {
@@ -342,7 +310,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return {
         success: false,
         error:
-          'Supabase database is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel or your .env file.',
+          'Supabase database is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment.',
       };
     }
 
@@ -370,22 +338,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (data.user) {
+        // Crucial Check: If the user already existed in Supabase auth, identities array is empty!
+        if (data.user.identities && data.user.identities.length === 0) {
+          return {
+            success: false,
+            error: 'An account with this email address already exists. Please sign in with your password, or use "Forgot Password".',
+          };
+        }
+
         // 1. Insert into public.account_types
-        await supabase.from('account_types').upsert({
-          user_id: data.user.id,
-          account_type: 'ATTENDEE',
-          updated_at: new Date().toISOString(),
-        });
+        try {
+          await supabase.from('account_types').upsert({
+            user_id: data.user.id,
+            account_type: 'ATTENDEE',
+            updated_at: new Date().toISOString(),
+          });
+        } catch (e) {}
 
         // 2. Insert into public.attendee_profiles
-        await supabase.from('attendee_profiles').upsert({
-          id: data.user.id,
-          full_name: fullName.trim(),
-          email: email.trim().toLowerCase(),
-          phone_number: phoneNumber.trim() || null,
-          is_email_verified: Boolean(data.user.email_confirmed_at),
-          updated_at: new Date().toISOString(),
-        });
+        try {
+          await supabase.from('attendee_profiles').upsert({
+            id: data.user.id,
+            full_name: fullName.trim(),
+            email: email.trim().toLowerCase(),
+            phone_number: phoneNumber.trim() || null,
+            is_email_verified: Boolean(data.user.email_confirmed_at),
+            updated_at: new Date().toISOString(),
+          });
+        } catch (e) {}
 
         // 3. Sync public.profiles for backward compatibility
         try {
@@ -400,10 +380,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (e) {}
 
         const isEmailConfirmed = Boolean(data.user.email_confirmed_at);
-        const requiresVerification = !isEmailConfirmed;
+        const hasSession = Boolean(data.session);
+        const requiresVerification = !isEmailConfirmed && !hasSession;
 
         if (requiresVerification) {
-          // Sign out any auto-assigned session to guarantee user cannot bypass email verification
           try {
             await supabase.auth.signOut();
           } catch (e) {}
@@ -452,7 +432,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return {
         success: false,
         error:
-          'Supabase database is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel or your .env file.',
+          'Supabase database is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment.',
       };
     }
 
@@ -480,21 +460,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (data.user) {
+        // Crucial Check: If the user already existed in Supabase auth, identities array is empty!
+        if (data.user.identities && data.user.identities.length === 0) {
+          return {
+            success: false,
+            error: 'An account with this email address already exists. Please sign in with your password, or use "Forgot Password".',
+          };
+        }
+
         // 1. Insert into public.account_types
-        await supabase.from('account_types').upsert({
-          user_id: data.user.id,
-          account_type: 'ORGANIZER',
-          updated_at: new Date().toISOString(),
-        });
+        try {
+          await supabase.from('account_types').upsert({
+            user_id: data.user.id,
+            account_type: 'ORGANIZER',
+            updated_at: new Date().toISOString(),
+          });
+        } catch (e) {}
 
         // 2. Insert into public.organizer_profiles
-        await supabase.from('organizer_profiles').upsert({
-          id: data.user.id,
-          full_name: fullName.trim(),
-          email: email.trim().toLowerCase(),
-          phone_number: phoneNumber.trim() || null,
-          updated_at: new Date().toISOString(),
-        });
+        try {
+          await supabase.from('organizer_profiles').upsert({
+            id: data.user.id,
+            full_name: fullName.trim(),
+            email: email.trim().toLowerCase(),
+            phone_number: phoneNumber.trim() || null,
+            updated_at: new Date().toISOString(),
+          });
+        } catch (e) {}
 
         // 3. Sync public.profiles for backward compatibility
         try {
@@ -509,7 +501,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (e) {}
 
         const isEmailConfirmed = Boolean(data.user.email_confirmed_at);
-        const requiresVerification = !isEmailConfirmed;
+        const hasSession = Boolean(data.session);
+        const requiresVerification = !isEmailConfirmed && !hasSession;
 
         const authUser: AuthUser = {
           id: data.user.id,
@@ -522,7 +515,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
 
         if (requiresVerification) {
-          // Sign out any auto-assigned session to guarantee user cannot bypass email verification
           try {
             await supabase.auth.signOut();
           } catch (e) {}
@@ -548,7 +540,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // 3. ATTENDEE SIGNIN (STRICT ISOLATION CHECK)
+  // 3. ATTENDEE SIGNIN
   const signInAttendee = async ({ email, password }: { email: string; password: string }) => {
     if (!email.trim() || !password) {
       return { success: false, error: 'Email and password are required.' };
@@ -568,12 +560,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
+        if (error.message?.toLowerCase().includes('email not confirmed')) {
+          return {
+            success: false,
+            error: 'Email not confirmed. Please check your inbox and verify your email address before signing in.',
+          };
+        }
         return { success: false, error: error.message };
       }
 
       if (data.user) {
-        // Enforce email verification check
-        if (!data.user.email_confirmed_at) {
+        // Enforce email verification check only if session is missing
+        if (!data.session && !data.user.email_confirmed_at) {
           await supabase.auth.signOut();
           setUser(null);
           setSession(null);
@@ -584,27 +582,58 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
         }
 
-        // Strict portal isolation validation
-        const { authUser, type, attProfile, orgProfile } = await fetchUserAccountAndProfiles(data.user);
+        // Fetch user account and profiles with preferredPortal 'ATTENDEE'
+        const { authUser, type, attProfile, orgProfile } = await fetchUserAccountAndProfiles(data.user, 'ATTENDEE');
 
-        if (type === 'ORGANIZER' || type === 'ADMIN') {
-          // BLOCK LOGIN FLOW & SIGN OUT IMMEDIATELY
-          await supabase.auth.signOut();
-          setUser(null);
-          setSession(null);
-          setAccountType(null);
-          return {
-            success: false,
-            error: 'This account is registered as an organizer. Please use the Organizer Login.',
-          };
+        // Ensure attendee_profile exists in database
+        if (!attProfile) {
+          try {
+            await supabase.from('attendee_profiles').upsert(
+              {
+                id: data.user.id,
+                full_name: authUser.fullName || (data.user.user_metadata?.full_name as string) || 'Ticketa Attendee',
+                email: data.user.email || email.trim().toLowerCase(),
+                phone_number: authUser.phoneNumber || (data.user.user_metadata?.phone_number as string) || null,
+                is_email_verified: Boolean(data.user.email_confirmed_at),
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'id' }
+            );
+          } catch (e) {}
         }
 
-        // Valid Attendee
+        // If database account_types was missing, set it as ATTENDEE
+        try {
+          const { data: existingType } = await supabase
+            .from('account_types')
+            .select('account_type')
+            .eq('user_id', data.user.id)
+            .maybeSingle();
+
+          if (!existingType) {
+            await supabase.from('account_types').upsert(
+              {
+                user_id: data.user.id,
+                account_type: 'ATTENDEE',
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'user_id' }
+            );
+            await supabase.auth.updateUser({
+              data: {
+                account_type: 'ATTENDEE',
+                role: 'ATTENDEE',
+              },
+            });
+          }
+        } catch (e) {}
+
+        // Valid Sign In
         setUser(authUser);
         setSession(data.session);
-        setAccountType('ATTENDEE');
+        setAccountType(type);
         setAttendeeProfile(attProfile);
-        setOrganizerProfile(null);
+        setOrganizerProfile(orgProfile);
         return { success: true, user: authUser };
       }
 
@@ -614,7 +643,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // 4. ORGANIZER SIGNIN (STRICT ISOLATION CHECK)
+  // 4. ORGANIZER SIGNIN
   const signInOrganizer = async ({ email, password }: { email: string; password: string }) => {
     if (!email.trim() || !password) {
       return { success: false, error: 'Email and password are required.' };
@@ -634,12 +663,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
+        if (error.message?.toLowerCase().includes('email not confirmed')) {
+          return {
+            success: false,
+            error: 'Email not confirmed. Please check your inbox and verify your email address before signing in.',
+          };
+        }
         return { success: false, error: error.message };
       }
 
       if (data.user) {
-        // Enforce email verification check
-        if (!data.user.email_confirmed_at) {
+        if (!data.session && !data.user.email_confirmed_at) {
           await supabase.auth.signOut();
           setUser(null);
           setSession(null);
@@ -650,28 +684,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
         }
 
-        // Strict portal isolation validation
-        const { authUser, type, attProfile, orgProfile } = await fetchUserAccountAndProfiles(data.user);
+        // Fetch user account and profiles with preferredPortal 'ORGANIZER'
+        const { authUser, type, attProfile, orgProfile } = await fetchUserAccountAndProfiles(data.user, 'ORGANIZER');
 
-        if (type === 'ATTENDEE') {
-          // BLOCK LOGIN FLOW & SIGN OUT IMMEDIATELY
-          await supabase.auth.signOut();
-          setUser(null);
-          setSession(null);
-          setAccountType(null);
-          return {
-            success: false,
-            error: 'This account is registered as an attendee. Please use the Attendee Login.',
-          };
+        // Ensure organizer_profiles exists
+        if (!orgProfile) {
+          try {
+            await supabase.from('organizer_profiles').upsert(
+              {
+                id: data.user.id,
+                full_name: authUser.fullName || (data.user.user_metadata?.full_name as string) || 'Ticketa Organizer',
+                email: data.user.email || email.trim().toLowerCase(),
+                phone_number: authUser.phoneNumber || (data.user.user_metadata?.phone_number as string) || null,
+                country: 'NG',
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'id' }
+            );
+          } catch (e) {}
         }
 
-        // Valid Organizer / Admin
-        setUser(authUser);
+        // Ensure account_types is set to ORGANIZER
+        try {
+          await supabase.from('account_types').upsert(
+            {
+              user_id: data.user.id,
+              account_type: 'ORGANIZER',
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'user_id' }
+          );
+          await supabase.auth.updateUser({
+            data: {
+              account_type: 'ORGANIZER',
+              role: 'ORGANIZER',
+            },
+          });
+        } catch (e) {}
+
+        const finalUser: AuthUser = {
+          ...authUser,
+          accountType: 'ORGANIZER',
+          role: authUser.role === 'ADMIN' ? 'ADMIN' : 'ORGANIZER',
+        };
+
+        setUser(finalUser);
         setSession(data.session);
-        setAccountType(type);
-        setAttendeeProfile(null);
+        setAccountType('ORGANIZER');
+        setAttendeeProfile(attProfile);
         setOrganizerProfile(orgProfile);
-        return { success: true, user: authUser };
+        return { success: true, user: finalUser };
       }
 
       return { success: false, error: 'Invalid login response.' };
