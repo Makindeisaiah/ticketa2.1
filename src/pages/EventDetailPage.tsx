@@ -32,7 +32,7 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
 
     event.ticket_types.forEach((tt) => {
       const avail = Number(tt.quantity_available !== undefined ? tt.quantity_available : 0);
-      if (!firstAvailableSet && avail > 0) {
+      if (!firstAvailableSet && avail > 0 && !isEventSoldOut) {
         initial[tt.name] = Math.min(2, avail);
         firstAvailableSet = true;
       } else {
@@ -42,7 +42,24 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
     return initial;
   });
 
+  // Sync quantities when event or sold-out status updates
+  React.useEffect(() => {
+    const initial: Record<string, number> = {};
+    let firstAvailableSet = false;
+    (event.ticket_types || []).forEach((tt) => {
+      const avail = Number(tt.quantity_available !== undefined ? tt.quantity_available : 0);
+      if (!firstAvailableSet && avail > 0 && !isEventSoldOut) {
+        initial[tt.name] = Math.min(2, avail);
+        firstAvailableSet = true;
+      } else {
+        initial[tt.name] = 0;
+      }
+    });
+    setQuantities(initial);
+  }, [event.id, isEventSoldOut]);
+
   const updateQuantity = (typeName: string, delta: number) => {
+    if (isEventSoldOut && delta > 0) return;
     const tt = event.ticket_types.find((t) => t.name === typeName);
     const maxAvail = tt ? Math.max(0, Number(tt.quantity_available !== undefined ? tt.quantity_available : 0)) : 0;
     
@@ -50,6 +67,7 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
 
     setQuantities((prev) => {
       const current = prev[typeName] || 0;
+      if (delta > 0 && current >= maxAvail) return prev;
       const next = Math.max(0, Math.min(Math.min(10, maxAvail), current + delta));
       return { ...prev, [typeName]: next };
     });

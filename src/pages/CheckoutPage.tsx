@@ -112,8 +112,29 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     onSubmitCheckout(payload);
   };
 
+  const isEventSoldOut = Boolean(
+    event.is_sold_out ||
+    (event.ticket_types &&
+      event.ticket_types.length > 0 &&
+      event.ticket_types.every((tt) => Number(tt.quantity_available) <= 0))
+  );
+
+  const hasSoldOutItem =
+    isEventSoldOut ||
+    ticketItems.length === 0 ||
+    ticketItems.some((item) => {
+      const tt = event.ticket_types.find((t) => t.name === item.ticketTypeName);
+      const avail = Number(tt?.quantity_available !== undefined ? tt?.quantity_available : 9999);
+      return avail <= 0 || item.quantity > avail;
+    });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (hasSoldOutItem || isEventSoldOut || ticketItems.length === 0) {
+      alert('This event or selected ticket tier is sold out. Ticket purchases are unavailable.');
+      return;
+    }
 
     if (!user) {
       // Prompt user to sign in or create account first
@@ -123,17 +144,6 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
 
     if (!fullName || !email) {
       alert('Please provide your full name and email address.');
-      return;
-    }
-
-    const hasSoldOutItem = ticketItems.some((item) => {
-      const tt = event.ticket_types.find((t) => t.name === item.ticketTypeName);
-      const avail = Number(tt?.quantity_available !== undefined ? tt?.quantity_available : 9999);
-      return avail <= 0 || item.quantity > avail;
-    });
-
-    if (hasSoldOutItem) {
-      alert('One or more selected ticket tiers are sold out or have insufficient availability. Please adjust your ticket selection.');
       return;
     }
 
@@ -164,6 +174,17 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
         <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
         <span className="text-slate-900 font-semibold">Checkout</span>
       </nav>
+
+      {/* Sold Out Notification Banner */}
+      {hasSoldOutItem && (
+        <div className="bg-rose-50 border border-rose-300 p-4 rounded-2xl flex items-center space-x-3 text-xs text-rose-900 shadow-xs">
+          <div className="w-2.5 h-2.5 rounded-full bg-rose-600 flex-shrink-0" />
+          <div>
+            <span className="font-bold block">Tickets Sold Out</span>
+            <p className="text-rose-700">This event or selected ticket tier is no longer available. Ticket purchasing is disabled.</p>
+          </div>
+        </div>
+      )}
 
       {/* Unauthenticated Notification Banner */}
       {!user && (
@@ -510,11 +531,18 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
             {/* CTA Submit Button matching Figma */}
             <button
               type="submit"
-              className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-black text-sm py-4 px-6 rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center space-x-2 transform active:scale-98"
+              disabled={hasSoldOutItem || isEventSoldOut || ticketItems.length === 0}
+              className={`w-full font-black text-sm py-4 px-6 rounded-xl shadow-md transition-all flex items-center justify-center space-x-2 ${
+                hasSoldOutItem || isEventSoldOut || ticketItems.length === 0
+                  ? 'bg-rose-50 border border-rose-200 text-rose-700 cursor-not-allowed opacity-80'
+                  : 'bg-[#00b894] hover:bg-[#00a383] text-white cursor-pointer transform active:scale-98'
+              }`}
             >
               <Lock className="w-4 h-4" />
               <span>
-                {paymentMethod === 'CARD'
+                {hasSoldOutItem || isEventSoldOut || ticketItems.length === 0
+                  ? 'Tickets Sold Out - Cannot Purchase'
+                  : paymentMethod === 'CARD'
                   ? `Pay ₦${totalAmount.toLocaleString()}`
                   : paymentMethod === 'BANK_TRANSFER'
                   ? `I've made the Transfer (₦${totalAmount.toLocaleString()})`

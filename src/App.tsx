@@ -110,11 +110,31 @@ function MainAppContent() {
     async function loadEvents() {
       const data = await getAllEvents();
       setEvents(data);
-      if (data.length > 0 && !selectedEvent) {
-        setSelectedEvent(data[0]);
+      if (data.length > 0) {
+        setSelectedEvent((prev) => {
+          if (!prev) return data[0];
+          const updated = data.find((e) => e.id === prev.id || e.slug === prev.slug);
+          return updated || prev;
+        });
       }
     }
     loadEvents();
+
+    const handleUpdate = () => {
+      loadEvents();
+    };
+
+    window.addEventListener('ticketa_order_created', handleUpdate);
+    window.addEventListener('ticketa_tickets_updated', handleUpdate);
+    window.addEventListener('ticketa_events_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+
+    return () => {
+      window.removeEventListener('ticketa_order_created', handleUpdate);
+      window.removeEventListener('ticketa_tickets_updated', handleUpdate);
+      window.removeEventListener('ticketa_events_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, []);
 
   const handleNavigate = (view: AppView, params?: any) => {

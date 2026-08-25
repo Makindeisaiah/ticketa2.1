@@ -21,6 +21,7 @@ export interface SeedEventData {
   organizer_logo: string;
   organizer_description: string;
   organizer_verified: boolean;
+  status?: string;
   is_sold_out?: boolean;
   total_capacity?: number;
   total_sold?: number;

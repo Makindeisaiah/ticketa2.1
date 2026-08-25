@@ -46,6 +46,7 @@ export async function getAllEvents(filters: EventFilterOptions = {}): Promise<Se
             icon_name
           ),
           ticket_types (
+            id,
             name,
             description,
             price,
@@ -54,7 +55,7 @@ export async function getAllEvents(filters: EventFilterOptions = {}): Promise<Se
             quantity_sold
           )
         `)
-        .eq('status', 'PUBLISHED')
+        .in('status', ['PUBLISHED', 'ACTIVE', 'SOLD_OUT', 'COMPLETED'])
         .order('start_time', { ascending: true });
 
       if (!error && data && data.length > 0) {
@@ -81,6 +82,7 @@ export async function getAllEvents(filters: EventFilterOptions = {}): Promise<Se
           organizer_logo: item.organizations?.logo_url || 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=120&h=120&q=80',
           organizer_description: item.organizations?.description || 'Verified event organizer on Ticketa.',
           organizer_verified: true,
+          status: item.status,
           ticket_types: (item.ticket_types || []).map((tt: any) => {
             const avail = Number(tt.quantity_available !== undefined && tt.quantity_available !== null ? tt.quantity_available : 0);
             const sold = Number(tt.quantity_sold || 0);
@@ -134,7 +136,10 @@ export async function getAllEvents(filters: EventFilterOptions = {}): Promise<Se
         };
       });
 
-      const isSoldOut = (updatedTicketTypes.length > 0 && updatedTicketTypes.every((tt) => tt.quantity_available <= 0)) ||
+      const isSoldOut =
+        Boolean(item.is_sold_out) ||
+        item.status === 'SOLD_OUT' ||
+        (updatedTicketTypes.length > 0 && updatedTicketTypes.every((tt) => Number(tt.quantity_available) <= 0)) ||
         (totalCapacityAgg > 0 && totalSoldAgg >= totalCapacityAgg);
 
       return {

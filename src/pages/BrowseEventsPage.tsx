@@ -47,6 +47,22 @@ export const BrowseEventsPage: React.FC<BrowseEventsPageProps> = ({
       setLoading(false);
     }
     loadData();
+
+    const handleUpdate = () => {
+      loadData();
+    };
+
+    window.addEventListener('ticketa_order_created', handleUpdate);
+    window.addEventListener('ticketa_tickets_updated', handleUpdate);
+    window.addEventListener('ticketa_events_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+
+    return () => {
+      window.removeEventListener('ticketa_order_created', handleUpdate);
+      window.removeEventListener('ticketa_tickets_updated', handleUpdate);
+      window.removeEventListener('ticketa_events_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, [searchQuery, category, location, dateFilter, priceFilter, sortBy]);
 
   const itemsPerPage = 12;
