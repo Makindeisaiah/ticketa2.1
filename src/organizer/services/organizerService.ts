@@ -504,10 +504,16 @@ export async function getOrganizationEvents(orgId: string): Promise<any[]> {
       Number(evt.revenue) || 0
     );
 
-    const defaultBaseCapacity = Number(evt.total_capacity) || (ttAvail + ttSold > 0 ? ttAvail + ttSold : 30);
-    const totalCapacity = Math.max(defaultBaseCapacity, totalSold > 0 ? Math.max(totalSold, 30) : 30);
+    // Calculate authentic total capacity from ticket types or event configuration
+    const sumTicketTypesCapacity = ttAvail + ttSold;
+    const configuredCapacity = Number(evt.total_capacity) || 0;
+    const totalCapacity = sumTicketTypesCapacity > 0
+      ? sumTicketTypesCapacity
+      : (configuredCapacity > 0 ? configuredCapacity : totalSold);
+
     const totalAvail = Math.max(0, totalCapacity - totalSold);
-    const progressVal = totalCapacity > 0 ? Math.min(100, Math.round((totalSold / totalCapacity) * 100)) : 0;
+    const isSoldOut = totalCapacity > 0 && totalSold >= totalCapacity;
+    const progressVal = totalCapacity > 0 ? Math.min(100, Math.round((totalSold / totalCapacity) * 100)) : (totalSold > 0 ? 100 : 0);
     const checkedInCount = Math.max(Number(evt.checked_in_count) || 0, dbCheckedIn);
 
     return {
@@ -516,6 +522,7 @@ export async function getOrganizationEvents(orgId: string): Promise<any[]> {
       total_available: totalAvail,
       total_capacity: totalCapacity,
       progress_val: progressVal,
+      is_sold_out: isSoldOut,
       revenue,
       checked_in_count: checkedInCount,
     };

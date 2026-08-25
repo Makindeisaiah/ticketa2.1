@@ -18,20 +18,39 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
   onNavigateToCheckout,
   onNavigateToBrowse,
 }) => {
+  const isEventSoldOut = Boolean(
+    event.is_sold_out ||
+    (event.ticket_types &&
+      event.ticket_types.length > 0 &&
+      event.ticket_types.every((tt) => Number(tt.quantity_available) <= 0))
+  );
+
   // Quantities state per ticket type name
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
     const initial: Record<string, number> = {};
-    event.ticket_types.forEach((tt, idx) => {
-      // Default first tier to 2 tickets like Figma screenshot if available!
-      initial[tt.name] = idx === 0 ? 2 : 0;
+    let firstAvailableSet = false;
+
+    event.ticket_types.forEach((tt) => {
+      const avail = Number(tt.quantity_available !== undefined ? tt.quantity_available : 0);
+      if (!firstAvailableSet && avail > 0) {
+        initial[tt.name] = Math.min(2, avail);
+        firstAvailableSet = true;
+      } else {
+        initial[tt.name] = 0;
+      }
     });
     return initial;
   });
 
   const updateQuantity = (typeName: string, delta: number) => {
+    const tt = event.ticket_types.find((t) => t.name === typeName);
+    const maxAvail = tt ? Math.max(0, Number(tt.quantity_available !== undefined ? tt.quantity_available : 0)) : 0;
+    
+    if (maxAvail <= 0 && delta > 0) return;
+
     setQuantities((prev) => {
       const current = prev[typeName] || 0;
-      const next = Math.max(0, Math.min(10, current + delta));
+      const next = Math.max(0, Math.min(Math.min(10, maxAvail), current + delta));
       return { ...prev, [typeName]: next };
     });
   };
@@ -39,7 +58,7 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
   const totalTicketsSelected = Object.values(quantities).reduce((a: number, b: number) => a + b, 0);
 
   const handleContinueToCheckout = () => {
-    if (totalTicketsSelected === 0) return;
+    if (totalTicketsSelected === 0 || isEventSoldOut) return;
     onNavigateToCheckout(event, quantities);
   };
 
@@ -162,10 +181,24 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
                 </div>
               </div>
 
-              <span className="bg-emerald-100 text-[#00b894] font-semibold text-[11px] px-2.5 py-1 rounded-full flex-shrink-0">
-                Upcoming
-              </span>
+              {isEventSoldOut ? (
+                <span className="bg-rose-100 border border-rose-200 text-rose-700 font-extrabold text-[11px] px-3 py-1 rounded-full flex-shrink-0">
+                  Sold Out
+                </span>
+              ) : (
+                <span className="bg-emerald-100 text-[#00b894] font-semibold text-[11px] px-2.5 py-1 rounded-full flex-shrink-0">
+                  Upcoming
+                </span>
+              )}
             </div>
+
+            {/* Sold Out Notice if event is completely sold out */}
+            {isEventSoldOut && (
+              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3.5 text-xs text-rose-800 font-medium leading-relaxed flex items-center space-x-2">
+                <span className="w-2 h-2 rounded-full bg-rose-500 flex-shrink-0" />
+                <span>This event has sold out. No additional tickets are currently available.</span>
+              </div>
+            )}
 
             {/* Ticket Tiers Counter List matching Figma */}
             <div className="space-y-3 pt-2">
@@ -173,23 +206,44 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
               
               {event.ticket_types.map((tt) => {
                 const qty = quantities[tt.name] || 0;
+                const avail = Number(tt.quantity_available !== undefined ? tt.quantity_available : 0);
+                const isTierSoldOut = avail <= 0;
+
                 return (
                   <div
                     key={tt.name}
-                    className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-slate-300 transition-colors"
+                    className={`flex items-center justify-between p-3.5 rounded-xl border transition-colors ${
+                      isTierSoldOut
+                        ? 'bg-slate-100/80 border-slate-200 opacity-75'
+                        : 'bg-slate-50 border-slate-200/80 hover:border-slate-300'
+                    }`}
                   >
                     <div>
-                      <span className="font-bold text-slate-900 text-sm block">{tt.name}</span>
-                      <span className="text-xs font-semibold text-[#00b894]">
-                        {tt.price === 0 ? 'Free' : `₦${tt.price.toLocaleString()}`}
-                      </span>
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-slate-900 text-sm block">{tt.name}</span>
+                        {isTierSoldOut && (
+                          <span className="px-2 py-0.5 bg-rose-100 text-rose-700 text-[10px] font-black uppercase tracking-wider rounded">
+                            Sold Out
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-2 mt-0.5">
+                        <span className="text-xs font-semibold text-[#00b894]">
+                          {tt.price === 0 ? 'Free' : `₦${tt.price.toLocaleString()}`}
+                        </span>
+                        {!isTierSoldOut && avail > 0 && avail <= 20 && (
+                          <span className="text-[11px] font-bold text-amber-600">
+                            ({avail} left)
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center space-x-3 bg-white border border-slate-300 rounded-lg p-1">
                       <button
                         onClick={() => updateQuantity(tt.name, -1)}
                         className="w-7 h-7 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors cursor-pointer disabled:opacity-40"
-                        disabled={qty === 0}
+                        disabled={qty === 0 || isTierSoldOut}
                       >
                         <Minus className="w-3.5 h-3.5" />
                       </button>
@@ -198,7 +252,8 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
                       </span>
                       <button
                         onClick={() => updateQuantity(tt.name, 1)}
-                        className="w-7 h-7 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
+                        className="w-7 h-7 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        disabled={isTierSoldOut || qty >= avail}
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
@@ -211,10 +266,18 @@ export const EventDetailPage: React.FC<EventDetailPageProps> = ({
             {/* Submit Action Button */}
             <button
               onClick={handleContinueToCheckout}
-              disabled={totalTicketsSelected === 0}
-              className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-bold text-sm py-3.5 px-6 rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transform active:scale-98"
+              disabled={totalTicketsSelected === 0 || isEventSoldOut}
+              className={`w-full font-bold text-sm py-3.5 px-6 rounded-xl shadow-md transition-all flex items-center justify-center space-x-2 ${
+                isEventSoldOut
+                  ? 'bg-rose-50 border border-rose-200 text-rose-700 cursor-not-allowed'
+                  : 'bg-[#00b894] hover:bg-[#00a383] text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transform active:scale-98'
+              }`}
             >
-              Continue ({totalTicketsSelected} {totalTicketsSelected === 1 ? 'ticket' : 'tickets'})
+              {isEventSoldOut ? (
+                <span>Event Sold Out</span>
+              ) : (
+                <span>Continue ({totalTicketsSelected} {totalTicketsSelected === 1 ? 'ticket' : 'tickets'})</span>
+              )}
             </button>
 
           </div>

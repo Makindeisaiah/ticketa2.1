@@ -8,12 +8,20 @@ interface EventCardProps {
 }
 
 export const EventCard: React.FC<EventCardProps> = ({ event, onClick }) => {
+  const isSoldOut = Boolean(
+    event.is_sold_out ||
+    (event.ticket_types &&
+      event.ticket_types.length > 0 &&
+      event.ticket_types.every((tt) => Number(tt.quantity_available) <= 0))
+  );
+
   // Format price
   const prices = event.ticket_types.map((t) => t.price);
   const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
   
-  const priceDisplay =
-    minPrice === 0
+  const priceDisplay = isSoldOut
+    ? 'Sold Out'
+    : minPrice === 0
       ? 'Free'
       : `From ₦${minPrice.toLocaleString()}`;
 
@@ -49,12 +57,16 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onClick }) => {
           {event.category}
         </div>
 
-        {/* Featured tag if applicable */}
-        {event.is_featured && (
+        {/* Sold Out or Featured tag */}
+        {isSoldOut ? (
+          <div className="absolute top-3 right-3 bg-rose-600 text-white text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md shadow-md">
+            Sold Out
+          </div>
+        ) : event.is_featured ? (
           <div className="absolute top-3 right-3 bg-[#00b894] text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded shadow-xs">
             Featured
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Card Content */}
@@ -79,7 +91,13 @@ export const EventCard: React.FC<EventCardProps> = ({ event, onClick }) => {
         </div>
 
         {/* Price Action Button matching Figma mockup */}
-        <button className="w-full bg-[#00b894] hover:bg-[#00a383] text-white text-xs font-semibold py-2 px-3 rounded-lg shadow-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer">
+        <button
+          className={`w-full text-xs font-semibold py-2 px-3 rounded-lg shadow-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer ${
+            isSoldOut
+              ? 'bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100'
+              : 'bg-[#00b894] hover:bg-[#00a383] text-white'
+          }`}
+        >
           <Ticket className="w-3.5 h-3.5" />
           <span>{priceDisplay}</span>
         </button>

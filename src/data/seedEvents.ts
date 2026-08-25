@@ -21,13 +21,19 @@ export interface SeedEventData {
   organizer_logo: string;
   organizer_description: string;
   organizer_verified: boolean;
+  is_sold_out?: boolean;
+  total_capacity?: number;
+  total_sold?: number;
+  total_available?: number;
   ticket_types: {
+    id?: string;
     name: string;
     description: string;
     price: number;
     currency: string;
     quantity_available: number;
     quantity_sold: number;
+    is_sold_out?: boolean;
   }[];
 }
 

@@ -81,14 +81,20 @@ export async function getAllEvents(filters: EventFilterOptions = {}): Promise<Se
           organizer_logo: item.organizations?.logo_url || 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=120&h=120&q=80',
           organizer_description: item.organizations?.description || 'Verified event organizer on Ticketa.',
           organizer_verified: true,
-          ticket_types: (item.ticket_types || []).map((tt: any) => ({
-            name: tt.name,
-            description: tt.description || '',
-            price: Number(tt.price || 0),
-            currency: tt.currency || 'NGN',
-            quantity_available: tt.quantity_available || 1000,
-            quantity_sold: tt.quantity_sold || 0,
-          })),
+          ticket_types: (item.ticket_types || []).map((tt: any) => {
+            const avail = Number(tt.quantity_available !== undefined && tt.quantity_available !== null ? tt.quantity_available : 0);
+            const sold = Number(tt.quantity_sold || 0);
+            return {
+              id: tt.id,
+              name: tt.name,
+              description: tt.description || '',
+              price: Number(tt.price || 0),
+              currency: tt.currency || 'NGN',
+              quantity_available: avail,
+              quantity_sold: sold,
+              is_sold_out: avail <= 0 && (avail + sold > 0),
+            };
+          }),
         }));
       }
     } catch (e) {
@@ -99,6 +105,49 @@ export async function getAllEvents(filters: EventFilterOptions = {}): Promise<Se
   // Real data only: if database is empty, eventsList is []
   if (!eventsList || eventsList.length === 0) {
     return [];
+  }
+
+  // Live reconciliation with local sales tracker
+  try {
+    const salesTracker = JSON.parse(localStorage.getItem('ticketa_event_sales_tracker_v1') || '{}');
+    eventsList = eventsList.map((item) => {
+      const tracker = salesTracker[item.id] || (item.slug ? salesTracker[item.slug] : null);
+      const trackerTts = tracker?.ticketTypes || {};
+
+      let totalSoldAgg = 0;
+      let totalCapacityAgg = 0;
+
+      const updatedTicketTypes = item.ticket_types.map((tt) => {
+        const extraSold = Number(trackerTts[tt.name]) || 0;
+        const totalSold = Math.max(Number(tt.quantity_sold || 0), extraSold);
+        const originalCapacity = (Number(tt.quantity_available) || 0) + (Number(tt.quantity_sold) || 0);
+        const remainingAvail = Math.max(0, originalCapacity - totalSold);
+        
+        totalSoldAgg += totalSold;
+        totalCapacityAgg += originalCapacity;
+
+        return {
+          ...tt,
+          quantity_sold: totalSold,
+          quantity_available: remainingAvail,
+          is_sold_out: remainingAvail <= 0 && originalCapacity > 0,
+        };
+      });
+
+      const isSoldOut = (updatedTicketTypes.length > 0 && updatedTicketTypes.every((tt) => tt.quantity_available <= 0)) ||
+        (totalCapacityAgg > 0 && totalSoldAgg >= totalCapacityAgg);
+
+      return {
+        ...item,
+        ticket_types: updatedTicketTypes,
+        total_sold: totalSoldAgg,
+        total_capacity: totalCapacityAgg,
+        total_available: Math.max(0, totalCapacityAgg - totalSoldAgg),
+        is_sold_out: isSoldOut,
+      };
+    });
+  } catch (e) {
+    console.warn('Sales reconciliation notice:', e);
   }
 
   // Apply filters in memory

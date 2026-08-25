@@ -126,6 +126,17 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
       return;
     }
 
+    const hasSoldOutItem = ticketItems.some((item) => {
+      const tt = event.ticket_types.find((t) => t.name === item.ticketTypeName);
+      const avail = Number(tt?.quantity_available !== undefined ? tt?.quantity_available : 9999);
+      return avail <= 0 || item.quantity > avail;
+    });
+
+    if (hasSoldOutItem) {
+      alert('One or more selected ticket tiers are sold out or have insufficient availability. Please adjust your ticket selection.');
+      return;
+    }
+
     executeOrderSubmission();
   };
 

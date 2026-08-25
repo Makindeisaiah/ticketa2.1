@@ -28,6 +28,22 @@ export interface OrderCheckoutPayload {
   totalAmount: number;
 }
 
+export interface OrderTicketPass {
+  id?: string;
+  ticketCode: string;
+  ticketType: string;
+  passNumber: number;
+  totalPasses: number;
+  unitPrice: number;
+  qrCodeHash: string;
+  status: 'VALID' | 'USED' | 'CANCELLED';
+  isCheckedIn: boolean;
+  checkedInAt?: string;
+  attendeeName: string;
+  attendeeEmail: string;
+  seatZone?: string;
+}
+
 export interface CompletedOrderResult {
   id: string;
   orderNumber: string;
@@ -48,13 +64,7 @@ export interface CompletedOrderResult {
   status: 'PAID' | 'PENDING' | 'FAILED';
   createdAt: string;
   paymentReference: string;
-  tickets: {
-    ticketCode: string;
-    ticketType: string;
-    qrCodeHash: string;
-    status: 'VALID' | 'USED' | 'CANCELLED';
-    isCheckedIn: boolean;
-  }[];
+  tickets: OrderTicketPass[];
 }
 
 const STORAGE_ORDERS_KEY = 'ticketa_user_orders_v1';
@@ -215,19 +225,34 @@ export async function processPaystackOrder(payload: OrderCheckoutPayload): Promi
   const orderNumber = generateOrderNumber();
   const paymentRef = `PSTK-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
-  // Generate ticket items
-  const generatedTickets: CompletedOrderResult['tickets'] = [];
+  // Generate individual ticket passes
+  const totalPassCount = payload.items.reduce((s, it) => s + it.quantity, 0);
+  let globalPassIndex = 1;
+  const generatedTickets: OrderTicketPass[] = [];
+
   payload.items.forEach((item) => {
     for (let i = 0; i < item.quantity; i++) {
-      const code = `${orderNumber}-${item.ticketTypeName.substring(0, 3).toUpperCase()}-${i + 1}`;
-      const qrHash = `TICKETA_QR:${code}:${payload.event.id}:${Date.now()}`;
+      const typeClean = item.ticketTypeName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase() || 'TKT';
+      const code = `TKT-${orderNumber}-${typeClean}-${String(globalPassIndex).padStart(2, '0')}`;
+      const qrHash = `TICKETA_PASS:${code}:${payload.event.id}:${Date.now()}-${globalPassIndex}`;
+      const isVip = item.ticketTypeName.toLowerCase().includes('vip') || item.ticketTypeName.toLowerCase().includes('table');
+
       generatedTickets.push({
+        id: `pass-${code}`,
         ticketCode: code,
         ticketType: item.ticketTypeName,
+        passNumber: globalPassIndex,
+        totalPasses: totalPassCount,
+        unitPrice: item.unitPrice,
         qrCodeHash: qrHash,
         status: 'VALID',
         isCheckedIn: false,
+        attendeeName: payload.buyer.fullName || 'Guest Attendee',
+        attendeeEmail: payload.buyer.email,
+        seatZone: isVip ? 'VIP Circle • Priority Access' : 'General Admission • Main Gate',
       });
+
+      globalPassIndex++;
     }
   });
 
@@ -417,93 +442,215 @@ export async function processPaystackOrder(payload: OrderCheckoutPayload): Promi
   return orderResult;
 }
 
+export async function updateTicketGuestName(
+  orderIdOrNumber: string,
+  ticketCode: string,
+  newGuestName: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!ticketCode || !newGuestName.trim()) {
+    return { success: false, error: 'Please provide a valid guest name' };
+  }
+
+  const cleanName = newGuestName.trim();
+
+  // 1. Update in local storage user orders
+  try {
+    const userOrders: CompletedOrderResult[] = JSON.parse(localStorage.getItem(STORAGE_ORDERS_KEY) || '[]');
+    let updated = false;
+
+    const newOrders = userOrders.map((ord) => {
+      if (ord.id === orderIdOrNumber || ord.orderNumber === orderIdOrNumber || ord.tickets?.some((t) => t.ticketCode === ticketCode)) {
+        const newTickets = (ord.tickets || []).map((t) => {
+          if (t.ticketCode === ticketCode) {
+            updated = true;
+            return { ...t, attendeeName: cleanName };
+          }
+          return t;
+        });
+        return { ...ord, tickets: newTickets };
+      }
+      return ord;
+    });
+
+    if (updated) {
+      localStorage.setItem(STORAGE_ORDERS_KEY, JSON.stringify(newOrders));
+    }
+
+    // Also update global orders
+    const globalOrders = JSON.parse(localStorage.getItem('ticketa_global_orders_v1') || '[]');
+    const newGlobal = globalOrders.map((ord: any) => {
+      if (ord.id === orderIdOrNumber || ord.orderNumber === orderIdOrNumber || ord.tickets?.some((t: any) => t.ticketCode === ticketCode)) {
+        const newTickets = (ord.tickets || []).map((t: any) => {
+          if (t.ticketCode === ticketCode) {
+            return { ...t, attendeeName: cleanName, attendee_name: cleanName };
+          }
+          return t;
+        });
+        return { ...ord, tickets: newTickets };
+      }
+      return ord;
+    });
+    localStorage.setItem('ticketa_global_orders_v1', JSON.stringify(newGlobal));
+
+    // Dispatch update events
+    window.dispatchEvent(new CustomEvent('ticketa_tickets_updated'));
+    window.dispatchEvent(new CustomEvent('ticketa_checkin_updated'));
+  } catch (e) {
+    console.warn('Local ticket name update error:', e);
+  }
+
+  // 2. Update in Supabase if online
+  if (isSupabaseConfigured) {
+    try {
+      await supabase
+        .from('tickets')
+        .update({ attendee_name: cleanName, updated_at: new Date().toISOString() })
+        .eq('ticket_code', ticketCode);
+    } catch (e) {
+      console.warn('Supabase DB ticket name update error:', e);
+    }
+  }
+
+  return { success: true };
+}
+
 export async function getUserOrders(userEmail?: string, userId?: string): Promise<CompletedOrderResult[]> {
   // If user is NOT logged in (no email and no userId), return empty array
   if (!userEmail && !userId) {
     return [];
   }
 
-  if (!isSupabaseConfigured) {
-    console.warn('Supabase is not configured. Unable to fetch user orders from PostgreSQL database.');
-    return [];
-  }
+  let dbOrders: CompletedOrderResult[] = [];
 
-  try {
-    let query = supabase
-      .from('orders')
-      .select(`
-        id,
-        order_number,
-        total_amount,
-        status,
-        created_at,
-        payment_reference,
-        events (
+  if (isSupabaseConfigured) {
+    try {
+      let query = supabase
+        .from('orders')
+        .select(`
           id,
-          title,
-          start_time,
-          banner_image_url,
-          venues ( name, city )
-        ),
-        tickets (
-          ticket_code,
-          qr_code_hash,
+          order_number,
+          total_amount,
           status,
-          is_checked_in,
-          ticket_types ( name )
-        )
-      `)
-      .order('created_at', { ascending: false });
+          created_at,
+          payment_reference,
+          customer_name,
+          customer_email,
+          customer_phone,
+          events (
+            id,
+            title,
+            start_time,
+            banner_image_url,
+            venues ( name, city )
+          ),
+          tickets (
+            ticket_code,
+            qr_code_hash,
+            status,
+            is_checked_in,
+            attendee_name,
+            attendee_email,
+            ticket_types ( name, price )
+          )
+        `)
+        .order('created_at', { ascending: false });
 
-    if (userId) {
-      query = query.eq('user_id', userId);
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
+
+      const { data, error } = await query;
+
+      if (!error && data && data.length > 0) {
+        dbOrders = data.map((ord: any) => {
+          const rawTickets = ord.tickets || [];
+          const totalPasses = rawTickets.length || 1;
+          const mappedTickets: OrderTicketPass[] = rawTickets.map((t: any, idx: number) => ({
+            ticketCode: t.ticket_code,
+            ticketType: t.ticket_types?.name || 'General Admission',
+            passNumber: idx + 1,
+            totalPasses: totalPasses,
+            unitPrice: Number(t.ticket_types?.price || 0),
+            qrCodeHash: t.qr_code_hash,
+            status: t.status || 'VALID',
+            isCheckedIn: Boolean(t.is_checked_in),
+            attendeeName: t.attendee_name || ord.customer_name || 'Guest Attendee',
+            attendeeEmail: t.attendee_email || ord.customer_email || userEmail || '',
+            seatZone: (t.ticket_types?.name || '').toLowerCase().includes('vip')
+              ? 'VIP Circle • Priority Entry'
+              : 'General Admission • Main Gate',
+          }));
+
+          return {
+            id: ord.id,
+            orderNumber: ord.order_number,
+            eventId: ord.events?.id || '',
+            eventTitle: ord.events?.title || 'Event',
+            eventDate: ord.events?.start_time || new Date().toISOString(),
+            eventVenue: ord.events?.venues ? `${ord.events.venues.name}, ${ord.events.venues.city}` : 'Lagos, Nigeria',
+            eventBanner: ord.events?.banner_image_url || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80',
+            buyerName: ord.customer_name || 'Ticketa Attendee',
+            buyerEmail: ord.customer_email || userEmail || '',
+            buyerPhone: ord.customer_phone || '',
+            paymentMethod: 'CARD',
+            items: mappedTickets.reduce((acc: SelectedTicketItem[], curr: OrderTicketPass) => {
+              const found = acc.find((i) => i.ticketTypeName === curr.ticketType);
+              if (found) {
+                found.quantity += 1;
+                found.subtotal += curr.unitPrice;
+              } else {
+                acc.push({
+                  ticketTypeName: curr.ticketType,
+                  quantity: 1,
+                  unitPrice: curr.unitPrice,
+                  subtotal: curr.unitPrice,
+                });
+              }
+              return acc;
+            }, []),
+            subtotal: Number(ord.total_amount),
+            discountAmount: 0,
+            serviceFee: 0,
+            totalAmount: Number(ord.total_amount),
+            status: ord.status === 'PAID' ? 'PAID' : 'PENDING',
+            createdAt: ord.created_at,
+            paymentReference: ord.payment_reference || '',
+            tickets: mappedTickets,
+          };
+        });
+      }
+    } catch (e) {
+      console.warn('Could not fetch user orders from Supabase DB:', e);
     }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('Error querying Supabase orders:', error.message);
-      return [];
-    }
-
-    if (data && data.length > 0) {
-      return data.map((ord: any) => ({
-        id: ord.id,
-        orderNumber: ord.order_number,
-        eventId: ord.events?.id || '',
-        eventTitle: ord.events?.title || 'Event',
-        eventDate: ord.events?.start_time || new Date().toISOString(),
-        eventVenue: ord.events?.venues ? `${ord.events.venues.name}, ${ord.events.venues.city}` : 'Lagos, Nigeria',
-        eventBanner: ord.events?.banner_image_url || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80',
-        buyerName: '',
-        buyerEmail: userEmail || '',
-        buyerPhone: '',
-        paymentMethod: 'CARD',
-        items: (ord.tickets || []).map((t: any) => ({
-          ticketTypeName: t.ticket_types?.name || 'Ticket',
-          quantity: 1,
-          unitPrice: Number(ord.total_amount),
-          subtotal: Number(ord.total_amount),
-        })),
-        subtotal: Number(ord.total_amount),
-        discountAmount: 0,
-        serviceFee: 0,
-        totalAmount: Number(ord.total_amount),
-        status: ord.status === 'PAID' ? 'PAID' : 'PENDING',
-        createdAt: ord.created_at,
-        paymentReference: ord.payment_reference || '',
-        tickets: (ord.tickets || []).map((t: any) => ({
-          ticketCode: t.ticket_code,
-          ticketType: t.ticket_types?.name || 'General Admission',
-          qrCodeHash: t.qr_code_hash,
-          status: t.status || 'VALID',
-          isCheckedIn: Boolean(t.is_checked_in),
-        })),
-      }));
-    }
-  } catch (e) {
-    console.warn('Could not fetch user orders from Supabase DB:', e);
   }
 
-  return [];
+  // Merge with local storage orders so instant purchases show up seamlessly
+  try {
+    const localOrders: CompletedOrderResult[] = JSON.parse(localStorage.getItem(STORAGE_ORDERS_KEY) || '[]');
+    const normalizedLocal = localOrders.map((ord) => {
+      // Ensure all tickets have pass numbers & attendee names
+      const totalPasses = ord.tickets?.length || 1;
+      const enrichedTickets: OrderTicketPass[] = (ord.tickets || []).map((t, idx) => ({
+        ...t,
+        passNumber: t.passNumber || idx + 1,
+        totalPasses: t.totalPasses || totalPasses,
+        attendeeName: t.attendeeName || ord.buyerName || 'Guest Attendee',
+        attendeeEmail: t.attendeeEmail || ord.buyerEmail || userEmail || '',
+        seatZone: t.seatZone || (t.ticketType.toLowerCase().includes('vip') ? 'VIP Circle • Priority Access' : 'General Admission • Main Gate'),
+      }));
+      return { ...ord, tickets: enrichedTickets };
+    });
+
+    const combined = [...normalizedLocal];
+    dbOrders.forEach((dbOrd) => {
+      if (!combined.some((o) => o.orderNumber === dbOrd.orderNumber || o.id === dbOrd.id)) {
+        combined.push(dbOrd);
+      }
+    });
+
+    return combined;
+  } catch (err) {
+    console.warn('Error reading local orders:', err);
+    return dbOrders;
+  }
 }

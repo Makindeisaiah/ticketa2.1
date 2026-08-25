@@ -194,13 +194,18 @@ export const OrganizerEvents: React.FC<OrganizerEventsProps> = ({
                 ? evt.total_available
                 : ticketTypes.reduce((s: number, t: any) => s + (Number(t.quantity_available) || 0), 0)
             );
-            const totalCapacity = Number(evt.total_capacity) || (totalAvail + totalSold > 0 ? totalAvail + totalSold : 30);
+            const sumTtCapacity = ticketTypes.reduce(
+              (s: number, t: any) => s + (Number(t.quantity_available) || 0) + (Number(t.quantity_sold) || 0),
+              0
+            );
+            const totalCapacity = Number(evt.total_capacity) || (sumTtCapacity > 0 ? sumTtCapacity : (totalAvail + totalSold > 0 ? totalAvail + totalSold : totalSold));
+            const isSoldOut = Boolean(evt.is_sold_out || (totalCapacity > 0 && totalSold >= totalCapacity));
             
             // Accurate progress bar percentage
             const progressVal =
               typeof evt.progress_val === 'number'
                 ? evt.progress_val
-                : (totalCapacity > 0 ? Math.min(100, Math.round((totalSold / totalCapacity) * 100)) : 0);
+                : (totalCapacity > 0 ? Math.min(100, Math.round((totalSold / totalCapacity) * 100)) : (totalSold > 0 ? 100 : 0));
 
             const eventRevenue =
               typeof evt.revenue === 'number'
@@ -251,17 +256,30 @@ export const OrganizerEvents: React.FC<OrganizerEventsProps> = ({
                         (e.target as HTMLElement).style.display = 'none';
                       }}
                     />
-                    <span className="absolute top-2 left-2 px-2.5 py-0.5 bg-[#00b894] text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-xs">
-                      {evt.status === 'PUBLISHED' || !evt.status ? 'Upcoming' : evt.status}
-                    </span>
+                    {isSoldOut ? (
+                      <span className="absolute top-2 left-2 px-2.5 py-0.5 bg-rose-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm">
+                        Sold Out
+                      </span>
+                    ) : (
+                      <span className="absolute top-2 left-2 px-2.5 py-0.5 bg-[#00b894] text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-xs">
+                        {evt.status === 'PUBLISHED' || !evt.status ? 'Upcoming' : evt.status}
+                      </span>
+                    )}
                   </div>
 
                   {/* Info: Title, Venue - Date and Time, Progress Bar */}
                   <div className="space-y-2.5 flex-1 min-w-0 w-full sm:w-auto">
                     {/* Event Title */}
-                    <h3 className="font-black text-slate-900 text-base sm:text-lg tracking-tight truncate">
-                      {evt.title}
-                    </h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-black text-slate-900 text-base sm:text-lg tracking-tight truncate">
+                        {evt.title}
+                      </h3>
+                      {isSoldOut && (
+                        <span className="px-2 py-0.5 bg-rose-100 border border-rose-200 text-rose-700 text-[10px] font-black uppercase tracking-wider rounded-md">
+                          Sold Out
+                        </span>
+                      )}
+                    </div>
 
                     {/* Venue - Date & Time */}
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 font-medium">
@@ -276,11 +294,13 @@ export const OrganizerEvents: React.FC<OrganizerEventsProps> = ({
                       </span>
                     </div>
 
-                    {/* Progress Bar with 0/30 tickets and percentage */}
+                    {/* Progress Bar with sold/capacity tickets and percentage */}
                     <div className="space-y-1.5 max-w-md pt-1">
                       <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200/80">
                         <div
-                          className="h-full bg-[#00b894] rounded-full transition-all duration-500"
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            isSoldOut ? 'bg-rose-500' : 'bg-[#00b894]'
+                          }`}
                           style={{ width: `${Math.max(progressVal > 0 ? 3 : 0, progressVal)}%` }}
                         />
                       </div>
@@ -288,7 +308,9 @@ export const OrganizerEvents: React.FC<OrganizerEventsProps> = ({
                         <span className="text-slate-600 font-medium">
                           <span className="text-slate-900 font-black">{totalSold}</span>/{totalCapacity} Tickets
                         </span>
-                        <span className="text-[#00b894] font-black">{progressVal}%</span>
+                        <span className={isSoldOut ? 'text-rose-600 font-black' : 'text-[#00b894] font-black'}>
+                          {isSoldOut ? '100% (Sold Out)' : `${progressVal}%`}
+                        </span>
                       </div>
                     </div>
                   </div>
