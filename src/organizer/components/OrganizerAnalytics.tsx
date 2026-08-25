@@ -49,72 +49,86 @@ export const OrganizerAnalytics: React.FC<OrganizerAnalyticsProps> = ({
 
   // Compute metrics from actual data
   const totalRevenue =
-    targetEvents.reduce((acc, evt) => {
-      const rev = Number(evt.revenue);
-      if (!isNaN(rev) && rev > 0) return acc + rev;
-      if (evt.ticket_types && Array.isArray(evt.ticket_types)) {
-        return (
-          acc +
-          evt.ticket_types.reduce(
-            (sub: number, tt: any) =>
-              sub + (Number(tt.quantity_sold) || 0) * (Number(tt.price) || 0),
-            0
-          )
-        );
-      }
-      return acc;
-    }, 0) ||
-    Number(metrics.totalRevenue) ||
-    0;
+    targetEvents.length > 0
+      ? targetEvents.reduce((acc, evt) => {
+          const rev = Number(evt.revenue);
+          if (!isNaN(rev) && rev >= 0) return acc + rev;
+          if (evt.ticket_types && Array.isArray(evt.ticket_types)) {
+            return (
+              acc +
+              evt.ticket_types.reduce(
+                (sub: number, tt: any) =>
+                  sub + (Number(tt.quantity_sold) || 0) * (Number(tt.price) || 0),
+                0
+              )
+            );
+          }
+          return acc;
+        }, 0)
+      : Number(metrics.totalRevenue) || 0;
 
   const totalSold =
-    targetEvents.reduce((acc, evt) => {
-      const s = Number(evt.total_sold);
-      if (!isNaN(s) && s > 0) return acc + s;
-      if (evt.ticket_types && Array.isArray(evt.ticket_types)) {
-        return (
-          acc +
-          evt.ticket_types.reduce(
-            (sub: number, tt: any) => sub + (Number(tt.quantity_sold) || 0),
-            0
-          )
-        );
-      }
-      return acc;
-    }, 0) ||
-    Number(metrics.ticketsSold) ||
-    0;
+    targetEvents.length > 0
+      ? targetEvents.reduce((acc, evt) => {
+          const s = Number(evt.total_sold);
+          if (!isNaN(s) && s >= 0) return acc + s;
+          if (evt.ticket_types && Array.isArray(evt.ticket_types)) {
+            return (
+              acc +
+              evt.ticket_types.reduce(
+                (sub: number, tt: any) => sub + (Number(tt.quantity_sold) || 0),
+                0
+              )
+            );
+          }
+          return acc;
+        }, 0)
+      : Number(metrics.ticketsSold) || 0;
 
-  const totalAvailable = targetEvents.reduce((acc, evt) => {
-    const a = Number(evt.total_available);
-    if (!isNaN(a) && a > 0) return acc + a;
-    if (!evt.ticket_types || !Array.isArray(evt.ticket_types)) return acc + 100;
-    return (
-      acc +
-      evt.ticket_types.reduce(
-        (sub: number, tt: any) => sub + (Number(tt.quantity_available) || 0),
-        0
-      )
-    );
-  }, 0);
+  const totalCapacity =
+    targetEvents.length > 0
+      ? targetEvents.reduce((acc, evt) => {
+          const cap = Number(evt.total_capacity);
+          if (!isNaN(cap) && cap > 0) return acc + cap;
+          if (evt.ticket_types && Array.isArray(evt.ticket_types) && evt.ticket_types.length > 0) {
+            return (
+              acc +
+              evt.ticket_types.reduce(
+                (sub: number, tt: any) =>
+                  sub + (Number(tt.quantity_available) || 0) + (Number(tt.quantity_sold) || 0),
+                0
+              )
+            );
+          }
+          const avail = Number(evt.total_available) || 0;
+          const sold = Number(evt.total_sold) || 0;
+          if (avail + sold > 0) return acc + (avail + sold);
+          return acc + sold;
+        }, 0)
+      : totalSold;
+
+  const totalAvailable = Math.max(0, totalCapacity - totalSold);
 
   // Aggregate ticket tiers across target events
   const tierMap: Record<
     string,
-    { name: string; sold: number; available: number; price: number; revenue: number }
+    { name: string; sold: number; capacity: number; available: number; price: number; revenue: number }
   > = {};
   targetEvents.forEach((evt) => {
     if (evt.ticket_types && Array.isArray(evt.ticket_types)) {
       evt.ticket_types.forEach((tt: any) => {
         const name = tt.name || 'General Admission';
         const sold = Number(tt.quantity_sold) || 0;
-        const available = Number(tt.quantity_available) || 0;
+        const availInObj = Number(tt.quantity_available) || 0;
+        const initialCap = availInObj + sold;
+        const avail = Math.max(0, initialCap - sold);
         const price = Number(tt.price) || 0;
         if (!tierMap[name]) {
-          tierMap[name] = { name, sold: 0, available: 0, price, revenue: 0 };
+          tierMap[name] = { name, sold: 0, capacity: 0, available: 0, price, revenue: 0 };
         }
         tierMap[name].sold += sold;
-        tierMap[name].available += available;
+        tierMap[name].capacity += initialCap;
+        tierMap[name].available += avail;
         tierMap[name].revenue += sold * price;
       });
     }
@@ -241,7 +255,7 @@ export const OrganizerAnalytics: React.FC<OrganizerAnalyticsProps> = ({
         <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs space-y-1">
           <span className="text-xs font-bold text-slate-500 block">Tickets Sold / Capacity</span>
           <span className="text-2xl font-black text-[#00b894] tracking-tight block">
-            {totalSold.toLocaleString()} / {(totalSold + totalAvailable).toLocaleString()}
+            {totalSold.toLocaleString()} / {totalCapacity.toLocaleString()}
           </span>
         </div>
 
@@ -428,7 +442,7 @@ export const OrganizerAnalytics: React.FC<OrganizerAnalyticsProps> = ({
           {tierList.length > 0 ? (
             <div className="space-y-3 text-xs">
               {tierList.map((tier) => {
-                const totalCap = tier.sold + tier.available;
+                const totalCap = tier.capacity > 0 ? tier.capacity : tier.sold + tier.available;
                 const pct =
                   totalCap > 0 ? Math.round((tier.sold / totalCap) * 100) : 0;
                 return (
@@ -439,7 +453,7 @@ export const OrganizerAnalytics: React.FC<OrganizerAnalyticsProps> = ({
                     <div className="flex justify-between font-extrabold text-slate-900">
                       <span>
                         {tier.name} ({tier.sold.toLocaleString()} sold /{' '}
-                        {tier.available.toLocaleString()} available)
+                        {totalCap.toLocaleString()} capacity)
                       </span>
                       <span className="text-[#00b894] font-black">
                         ₦{tier.revenue.toLocaleString()}
@@ -448,7 +462,7 @@ export const OrganizerAnalytics: React.FC<OrganizerAnalyticsProps> = ({
                     <div className="w-full h-2 bg-slate-200/70 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-[#00b894] rounded-full transition-all duration-500"
-                        style={{ width: `${Math.max(5, pct)}%` }}
+                        style={{ width: `${Math.max(pct > 0 ? 5 : 0, pct)}%` }}
                       />
                     </div>
                   </div>

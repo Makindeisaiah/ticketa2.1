@@ -35,17 +35,17 @@ export const OrganizerOverview: React.FC<OrganizerOverviewProps> = ({
 
   // Compute live values
   const totalRev =
-    Number(metrics.totalRevenue) ||
-    events.reduce((sum, e) => sum + (Number(e.revenue) || 0), 0) ||
-    0;
+    events.length > 0
+      ? events.reduce((sum, e) => sum + (Number(e.revenue) || 0), 0)
+      : Number(metrics.totalRevenue) || 0;
   const displayRevenue = `₦${totalRev.toLocaleString()}`;
   const totalSold =
-    Number(metrics.ticketsSold) ||
-    events.reduce((sum, e) => sum + (Number(e.total_sold) || 0), 0) ||
-    0;
+    events.length > 0
+      ? events.reduce((sum, e) => sum + (Number(e.total_sold) || 0), 0)
+      : Number(metrics.ticketsSold) || 0;
   const displaySold = `${totalSold.toLocaleString()}`;
   const displayEvents = metrics.activeEvents || events.length || 0;
-  const displayCheckIns = `${(Number(metrics.totalCheckedIn) || events.reduce((sum, e) => sum + (Number(e.checked_in_count) || 0), 0)).toLocaleString()}`;
+  const displayCheckIns = `${(events.length > 0 ? events.reduce((sum, e) => sum + (Number(e.checked_in_count) || 0), 0) : Number(metrics.totalCheckedIn) || 0).toLocaleString()}`;
   const upcomingEventsList = events.slice(0, 5);
 
   // Dynamic Chart Points based on actual gross revenue and real ticket volume
