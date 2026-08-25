@@ -115,9 +115,19 @@ export const OrganizerTicketSales: React.FC<{ orders?: any[]; events?: any[] }> 
   const ticketTypeRows = Array.from(ticketTypeMap.values());
 
   // Chart data calculations
-  const maxVal = Math.max(totalRev || 500000, 500000);
+  const maxVal = totalRev > 0 ? totalRev : 0;
   const chartPoints =
-    timeRange === 'Daily'
+    totalRev === 0
+      ? [
+          { label: '00:00', val: 0 },
+          { label: '04:00', val: 0 },
+          { label: '08:00', val: 0 },
+          { label: '12:00', val: 0 },
+          { label: '16:00', val: 0 },
+          { label: '20:00', val: 0 },
+          { label: '23:59', val: 0 },
+        ]
+      : timeRange === 'Daily'
       ? [
           { label: '00:00', val: Math.round(maxVal * 0.1) },
           { label: '04:00', val: Math.round(maxVal * 0.2) },
@@ -144,13 +154,16 @@ export const OrganizerTicketSales: React.FC<{ orders?: any[]; events?: any[] }> 
           { label: 'Week 4', val: maxVal },
         ];
 
-  const yAxisLabels = [
-    `₦${maxVal.toLocaleString()}`,
-    `₦${Math.round(maxVal * 0.75).toLocaleString()}`,
-    `₦${Math.round(maxVal * 0.5).toLocaleString()}`,
-    `₦${Math.round(maxVal * 0.25).toLocaleString()}`,
-    '₦0',
-  ];
+  const yAxisLabels =
+    maxVal > 0
+      ? [
+          `₦${maxVal.toLocaleString()}`,
+          `₦${Math.round(maxVal * 0.75).toLocaleString()}`,
+          `₦${Math.round(maxVal * 0.5).toLocaleString()}`,
+          `₦${Math.round(maxVal * 0.25).toLocaleString()}`,
+          '₦0',
+        ]
+      : ['₦0', '₦0', '₦0', '₦0', '₦0'];
 
   const svgW = 720;
   const svgH = 180;

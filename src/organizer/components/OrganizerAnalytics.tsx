@@ -123,9 +123,19 @@ export const OrganizerAnalytics: React.FC<OrganizerAnalyticsProps> = ({
   const tierList = Object.values(tierMap);
 
   // Chart data
-  const maxVal = Math.max(totalRevenue || 500000, 500000);
+  const maxVal = totalRevenue > 0 ? totalRevenue : 0;
   const chartPoints =
-    timeRange === 'Daily'
+    totalRevenue === 0
+      ? [
+          { label: '00:00', val: 0 },
+          { label: '04:00', val: 0 },
+          { label: '08:00', val: 0 },
+          { label: '12:00', val: 0 },
+          { label: '16:00', val: 0 },
+          { label: '20:00', val: 0 },
+          { label: '23:59', val: 0 },
+        ]
+      : timeRange === 'Daily'
       ? [
           { label: '00:00', val: Math.round(maxVal * 0.1) },
           { label: '04:00', val: Math.round(maxVal * 0.18) },
@@ -152,13 +162,16 @@ export const OrganizerAnalytics: React.FC<OrganizerAnalyticsProps> = ({
           { label: 'Week 4', val: maxVal },
         ];
 
-  const yAxisLabels = [
-    `₦${maxVal.toLocaleString()}`,
-    `₦${Math.round(maxVal * 0.75).toLocaleString()}`,
-    `₦${Math.round(maxVal * 0.5).toLocaleString()}`,
-    `₦${Math.round(maxVal * 0.25).toLocaleString()}`,
-    '₦0',
-  ];
+  const yAxisLabels =
+    maxVal > 0
+      ? [
+          `₦${maxVal.toLocaleString()}`,
+          `₦${Math.round(maxVal * 0.75).toLocaleString()}`,
+          `₦${Math.round(maxVal * 0.5).toLocaleString()}`,
+          `₦${Math.round(maxVal * 0.25).toLocaleString()}`,
+          '₦0',
+        ]
+      : ['₦0', '₦0', '₦0', '₦0', '₦0'];
 
   const svgW = 600;
   const svgH = 180;
