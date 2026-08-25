@@ -121,52 +121,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               phoneNumber = legacyProfile.phone_number || phoneNumber;
               determinedType = legacyProfile.role === 'ADMIN' ? 'ADMIN' : 'ORGANIZER';
             }
-
-            // Sync organizer_profiles now that we have session
-            try {
-              await supabase.from('organizer_profiles').upsert(
-                {
-                  id: supabaseUser.id,
-                  full_name: fullName || 'Ticketa Organizer',
-                  email: supabaseUser.email?.trim().toLowerCase() || '',
-                  phone_number: phoneNumber || null,
-                  country: 'NG',
-                  onboarding_completed: true,
-                  updated_at: new Date().toISOString(),
-                },
-                { onConflict: 'id' }
-              );
-            } catch (e) {}
           }
-
-          // Ensure account_types row exists
-          if (!accountTypeData) {
-            try {
-              await supabase.from('account_types').upsert(
-                {
-                  user_id: supabaseUser.id,
-                  account_type: 'ORGANIZER',
-                  updated_at: new Date().toISOString(),
-                },
-                { onConflict: 'user_id' }
-              );
-            } catch (e) {}
-          }
-
-          // Ensure profiles row exists
-          try {
-            await supabase.from('profiles').upsert(
-              {
-                id: supabaseUser.id,
-                full_name: fullName || 'Ticketa Organizer',
-                email: supabaseUser.email?.trim().toLowerCase() || '',
-                phone_number: phoneNumber || null,
-                role: determinedType === 'ADMIN' ? 'ADMIN' : 'ORGANIZER',
-                is_email_verified: Boolean(supabaseUser.email_confirmed_at),
-              },
-              { onConflict: 'id' }
-            );
-          } catch (e) {}
         } else {
           // Attendee
           const { data: attData } = await supabase
@@ -179,14 +134,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             attProfile = attData as AttendeeProfile;
             fullName = attData.full_name || fullName;
             phoneNumber = attData.phone_number || phoneNumber;
-
-            // Sync email verification if confirmed in auth
-            if (supabaseUser.email_confirmed_at && !attData.is_email_verified) {
-              await supabase
-                .from('attendee_profiles')
-                .update({ is_email_verified: true, updated_at: new Date().toISOString() })
-                .eq('id', supabaseUser.id);
-            }
           } else {
             // Check legacy profiles if attendee_profiles not yet populated
             const { data: legacyProfile } = await supabase
@@ -199,51 +146,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               fullName = legacyProfile.full_name || fullName;
               phoneNumber = legacyProfile.phone_number || phoneNumber;
             }
-
-            // Sync attendee_profiles now that we have session
-            try {
-              await supabase.from('attendee_profiles').upsert(
-                {
-                  id: supabaseUser.id,
-                  full_name: fullName || 'Ticketa Attendee',
-                  email: supabaseUser.email?.trim().toLowerCase() || '',
-                  phone_number: phoneNumber || null,
-                  is_email_verified: Boolean(supabaseUser.email_confirmed_at),
-                  updated_at: new Date().toISOString(),
-                },
-                { onConflict: 'id' }
-              );
-            } catch (e) {}
           }
-
-          // Ensure account_types row exists
-          if (!accountTypeData) {
-            try {
-              await supabase.from('account_types').upsert(
-                {
-                  user_id: supabaseUser.id,
-                  account_type: 'ATTENDEE',
-                  updated_at: new Date().toISOString(),
-                },
-                { onConflict: 'user_id' }
-              );
-            } catch (e) {}
-          }
-
-          // Ensure profiles row exists
-          try {
-            await supabase.from('profiles').upsert(
-              {
-                id: supabaseUser.id,
-                full_name: fullName || 'Ticketa Attendee',
-                email: supabaseUser.email?.trim().toLowerCase() || '',
-                phone_number: phoneNumber || null,
-                role: 'ATTENDEE',
-                is_email_verified: Boolean(supabaseUser.email_confirmed_at),
-              },
-              { onConflict: 'id' }
-            );
-          } catch (e) {}
         }
       } catch (e) {
         console.warn('Account type/profile fetch notice:', e);
@@ -496,9 +399,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
         } catch (e) {}
 
-        const requiresVerification = !data.session && !data.user.email_confirmed_at;
+        const isEmailConfirmed = Boolean(data.user.email_confirmed_at);
+        const requiresVerification = !isEmailConfirmed;
 
-        if (data.session) {
+        if (requiresVerification) {
+          // Sign out any auto-assigned session to guarantee user cannot bypass email verification
+          try {
+            await supabase.auth.signOut();
+          } catch (e) {}
+          setUser(null);
+          setSession(null);
+          setAccountType(null);
+        } else if (data.session) {
           setSession(data.session);
           setUser({
             id: data.user.id,
@@ -507,7 +419,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             phoneNumber: phoneNumber.trim(),
             accountType: 'ATTENDEE',
             role: 'ATTENDEE',
-            isEmailVerified: Boolean(data.user.email_confirmed_at),
+            isEmailVerified: true,
           });
           setAccountType('ATTENDEE');
         }
@@ -596,7 +508,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
         } catch (e) {}
 
-        const requiresVerification = !data.session && !data.user.email_confirmed_at;
+        const isEmailConfirmed = Boolean(data.user.email_confirmed_at);
+        const requiresVerification = !isEmailConfirmed;
 
         const authUser: AuthUser = {
           id: data.user.id,
@@ -605,10 +518,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           phoneNumber: phoneNumber.trim(),
           accountType: 'ORGANIZER',
           role: 'ORGANIZER',
-          isEmailVerified: Boolean(data.user.email_confirmed_at),
+          isEmailVerified: isEmailConfirmed,
         };
 
-        if (data.session) {
+        if (requiresVerification) {
+          // Sign out any auto-assigned session to guarantee user cannot bypass email verification
+          try {
+            await supabase.auth.signOut();
+          } catch (e) {}
+          setUser(null);
+          setSession(null);
+          setAccountType(null);
+        } else if (data.session) {
           setSession(data.session);
           setUser(authUser);
           setAccountType('ORGANIZER');
@@ -651,6 +572,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (data.user) {
+        // Enforce email verification check
+        if (!data.user.email_confirmed_at) {
+          await supabase.auth.signOut();
+          setUser(null);
+          setSession(null);
+          setAccountType(null);
+          return {
+            success: false,
+            error: 'Email not confirmed. Please check your inbox and verify your email address before signing in.',
+          };
+        }
+
         // Strict portal isolation validation
         const { authUser, type, attProfile, orgProfile } = await fetchUserAccountAndProfiles(data.user);
 
@@ -705,6 +638,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (data.user) {
+        // Enforce email verification check
+        if (!data.user.email_confirmed_at) {
+          await supabase.auth.signOut();
+          setUser(null);
+          setSession(null);
+          setAccountType(null);
+          return {
+            success: false,
+            error: 'Email not confirmed. Please check your inbox and verify your email address before signing in.',
+          };
+        }
+
         // Strict portal isolation validation
         const { authUser, type, attProfile, orgProfile } = await fetchUserAccountAndProfiles(data.user);
 

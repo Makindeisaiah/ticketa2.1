@@ -239,7 +239,7 @@ export const BrowseEventsPage: React.FC<BrowseEventsPageProps> = ({
           <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
             <button
               onClick={() => {
-                window.location.href = '/organizer';
+                window.location.href = '/organizer/signup';
               }}
               className="bg-[#00b894] hover:bg-[#00a383] text-white font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl shadow-xs transition-all cursor-pointer flex items-center space-x-2"
             >

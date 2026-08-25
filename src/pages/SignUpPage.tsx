@@ -11,7 +11,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   onNavigateToSignIn,
   onSuccessRedirect,
 }) => {
-  const { signUpAttendee, isConfigured } = useAuth();
+  const { signUpAttendee, resendVerificationEmail, isConfigured } = useAuth();
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -22,6 +22,22 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isSuccessUnverified, setIsSuccessUnverified] = useState(false);
+  const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [resendMsg, setResendMsg] = useState('');
+
+  const handleResend = async () => {
+    if (!email.trim()) return;
+    setResendStatus('sending');
+    setResendMsg('');
+    const res = await resendVerificationEmail(email);
+    if (res.success) {
+      setResendStatus('sent');
+      setResendMsg('Verification email resent successfully! Please check your inbox and spam folder.');
+    } else {
+      setResendStatus('error');
+      setResendMsg(res.error || 'Failed to resend verification email.');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,12 +115,40 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({
             </ol>
           </div>
 
-          <button
-            onClick={onNavigateToSignIn}
-            className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-bold text-xs sm:text-sm py-3 px-4 rounded-xl cursor-pointer transition-colors shadow-xs"
-          >
-            Go to Sign In
-          </button>
+          {resendMsg && (
+            <div
+              className={`p-3 rounded-xl text-xs flex items-start space-x-2 ${
+                resendStatus === 'sent'
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                  : 'bg-rose-50 text-rose-800 border border-rose-200'
+              }`}
+            >
+              {resendStatus === 'sent' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+              )}
+              <span>{resendMsg}</span>
+            </div>
+          )}
+
+          <div className="space-y-2.5">
+            <button
+              type="button"
+              disabled={resendStatus === 'sending'}
+              onClick={handleResend}
+              className="w-full bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-bold text-xs sm:text-sm py-2.5 px-4 rounded-xl cursor-pointer transition-colors shadow-2xs disabled:opacity-60"
+            >
+              {resendStatus === 'sending' ? 'Sending...' : 'Resend Verification Email'}
+            </button>
+
+            <button
+              onClick={onNavigateToSignIn}
+              className="w-full bg-[#00b894] hover:bg-[#00a383] text-white font-bold text-xs sm:text-sm py-3 px-4 rounded-xl cursor-pointer transition-colors shadow-xs"
+            >
+              Go to Sign In
+            </button>
+          </div>
         </div>
       </div>
     );

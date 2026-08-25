@@ -19,10 +19,11 @@ export const OrganizerRouteGuard: React.FC<OrganizerRouteGuardProps> = ({ childr
     );
   }
 
-  // 2. Unauthenticated user -> render Organizer Login screen
-  if (!user) {
+  // 2. Unauthenticated user or Attendee attempting to access organizer portal
+  if (!user || user.accountType === 'ATTENDEE') {
     return (
       <OrganizerAuth
+        initialMode="signup"
         onSuccess={() => {
           refreshOrganizations();
         }}

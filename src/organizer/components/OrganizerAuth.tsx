@@ -337,9 +337,41 @@ export const OrganizerAuth: React.FC<OrganizerAuthProps> = ({ onSuccess, initial
             </div>
 
             {errorMsg && (
-              <div className="mb-6 p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-700 flex items-start space-x-2.5">
-                <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-                <span>{errorMsg}</span>
+              <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-700 space-y-2">
+                <div className="flex items-start space-x-2.5">
+                  <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
+                  <span className="font-medium">{errorMsg}</span>
+                </div>
+                {(errorMsg.toLowerCase().includes('email not confirmed') || errorMsg.toLowerCase().includes('not confirmed') || errorMsg.toLowerCase().includes('verify')) && (
+                  <div className="pt-2 border-t border-rose-200/60">
+                    <button
+                      type="button"
+                      disabled={resendStatus === 'sending'}
+                      onClick={async () => {
+                        const targetEmail = signInEmail.trim() || signUpEmail.trim();
+                        if (!targetEmail) return;
+                        setResendStatus('sending');
+                        setResendMsg('');
+                        const res = await resendVerificationEmail(targetEmail);
+                        if (res.success) {
+                          setResendStatus('sent');
+                          setResendMsg('Verification email resent! Please check your inbox and spam folder.');
+                        } else {
+                          setResendStatus('error');
+                          setResendMsg(res.error || 'Failed to resend email.');
+                        }
+                      }}
+                      className="bg-white hover:bg-rose-100/50 text-rose-800 border border-rose-300 font-bold py-1.5 px-3 rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-60 shadow-2xs"
+                    >
+                      {resendStatus === 'sending' ? 'Sending...' : 'Resend Verification Email'}
+                    </button>
+                    {resendMsg && (
+                      <p className={`mt-1.5 text-[11px] ${resendStatus === 'sent' ? 'text-emerald-700 font-semibold' : 'text-rose-700'}`}>
+                        {resendMsg}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
