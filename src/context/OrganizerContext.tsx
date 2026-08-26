@@ -180,7 +180,30 @@ export const OrganizerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
 
       // Filter to only genuine UUID organizations
-      const validOrgs = fetchedOrgs.filter((o) => o && isValidUUID(o.id));
+      let validOrgs = fetchedOrgs.filter((o) => o && isValidUUID(o.id));
+
+      // If user is authenticated as organizer but has no organization in DB (e.g. after DB wipe or initial login), auto-create one
+      if (validOrgs.length === 0 && isSupabaseConfigured && isValidUUID(targetUserId)) {
+        try {
+          const defaultName = (authUser?.fullName && authUser.fullName.trim())
+            ? (authUser.fullName.toLowerCase().includes('organ') || authUser.fullName.toLowerCase().includes('event') ? authUser.fullName.trim() : `${authUser.fullName.trim()}'s Organization`)
+            : 'My Organization';
+
+          const createRes = await createOrganization(targetUserId, {
+            name: defaultName,
+            type: 'INDIVIDUAL',
+            country: 'Nigeria',
+            phone_number: authUser?.phoneNumber || undefined,
+          });
+
+          if (createRes.success && createRes.organization && isValidUUID(createRes.organization.id)) {
+            validOrgs = [createRes.organization];
+            roles[createRes.organization.id] = 'OWNER';
+          }
+        } catch (autoErr) {
+          console.warn('Auto-create organization notice in OrganizerContext:', autoErr);
+        }
+      }
 
       validOrgs.forEach((o) => {
         if (!roles[o.id]) roles[o.id] = 'OWNER';

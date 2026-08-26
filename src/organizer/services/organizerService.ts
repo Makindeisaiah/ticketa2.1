@@ -150,6 +150,26 @@ export async function getUserOrganizations(userId: string): Promise<Organization
     });
 
     dbOrgs = Array.from(allOrgsMap.values());
+
+    if (dbOrgs.length === 0 && isSupabaseConfigured && isValidUUID(resolvedUserId)) {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const userName = authData?.user?.user_metadata?.full_name || 'My Organization';
+        const defaultName = userName.toLowerCase().includes('organ') || userName.toLowerCase().includes('event')
+          ? userName
+          : `${userName}'s Organization`;
+        const autoRes = await createOrganization(resolvedUserId, {
+          name: defaultName,
+          type: 'INDIVIDUAL',
+          country: 'Nigeria',
+        });
+        if (autoRes.success && autoRes.organization && isValidUUID(autoRes.organization.id)) {
+          dbOrgs = [autoRes.organization];
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
   } catch (e) {
     console.warn('Error fetching user organizations from database:', e);
   }
@@ -711,6 +731,27 @@ export async function createOrganizerEvent(
       }
     } catch (e) {
       console.warn('Error resolving organizer organization:', e);
+    }
+  }
+
+  // If no organization exists yet in the database, automatically provision one for this organizer
+  if (!resolvedOrgId || !isValidUUID(resolvedOrgId)) {
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const userName = authData?.user?.user_metadata?.full_name || 'My Organization';
+      const defaultName = userName.toLowerCase().includes('organ') || userName.toLowerCase().includes('event')
+        ? userName
+        : `${userName}'s Organization`;
+      const autoOrg = await createOrganization(resolvedUserId, {
+        name: defaultName,
+        type: 'INDIVIDUAL',
+        country: 'Nigeria',
+      });
+      if (autoOrg.success && autoOrg.organization && isValidUUID(autoOrg.organization.id)) {
+        resolvedOrgId = autoOrg.organization.id;
+      }
+    } catch (autoErr) {
+      console.warn('Auto-provision organization failed in createOrganizerEvent:', autoErr);
     }
   }
 

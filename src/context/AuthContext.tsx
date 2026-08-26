@@ -500,6 +500,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
         } catch (e) {}
 
+        // 4. Create initial organization in public.organizations and public.organization_members
+        try {
+          const orgName = `${fullName.trim()}'s Organization`;
+          const baseSlug = (fullName || 'organization')
+            .toLowerCase()
+            .trim()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '') || 'org';
+          const uniqueSlug = `${baseSlug}-${Math.random().toString(36).substring(2, 8)}`;
+
+          const { data: newOrg } = await supabase
+            .from('organizations')
+            .insert({
+              name: orgName,
+              slug: uniqueSlug,
+              type: 'INDIVIDUAL',
+              country: 'Nigeria',
+              phone_number: phoneNumber.trim() || null,
+              created_by: data.user.id,
+            })
+            .select()
+            .single();
+
+          if (newOrg?.id) {
+            await supabase.from('organization_members').insert({
+              organization_id: newOrg.id,
+              user_id: data.user.id,
+              role: 'OWNER',
+            });
+          }
+        } catch (e) {
+          console.warn('Initial organization setup notice during sign-up:', e);
+        }
+
         const isEmailConfirmed = Boolean(data.user.email_confirmed_at);
         const hasSession = Boolean(data.session);
         const requiresVerification = !isEmailConfirmed && !hasSession;
