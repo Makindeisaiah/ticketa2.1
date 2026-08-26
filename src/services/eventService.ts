@@ -15,89 +15,190 @@ export async function getAllEvents(filters: EventFilterOptions = {}): Promise<Se
 
   if (isSupabaseConfigured) {
     try {
-      const { data, error } = await supabase
-        .from('events')
-        .select(`
-          id,
-          title,
-          slug,
-          description,
-          banner_image_url,
-          start_time,
-          end_time,
-          is_featured,
-          is_online,
-          online_meeting_url,
-          status,
-          venues (
-            name,
-            address,
-            city,
-            country
-          ),
-          organizations (
-            name,
-            logo_url,
-            description
-          ),
-          event_categories (
-            name,
-            slug,
-            icon_name
-          ),
-          ticket_types (
-            id,
-            name,
-            description,
-            price,
-            currency,
-            quantity_available,
-            quantity_sold
-          )
-        `)
-        .in('status', ['PUBLISHED', 'ACTIVE', 'SOLD_OUT', 'COMPLETED'])
-        .order('start_time', { ascending: true });
+      // 1. Primary query: fetch all events
+      let rawData: any[] = [];
+      let fetchError: any = null;
 
-      if (!error && data && data.length > 0) {
-        eventsList = data.map((item: any) => ({
-          id: item.id,
-          title: item.title,
-          slug: item.slug,
-          description: item.description || '',
-          category: (item.event_categories?.name as any) || 'Concert',
-          category_slug: item.event_categories?.slug || 'concert',
-          category_icon: item.event_categories?.icon_name || 'Music',
-          banner_image_url: item.banner_image_url || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80',
-          start_time: item.start_time,
-          end_time: item.end_time,
-          is_featured: Boolean(item.is_featured),
-          is_trending: true,
-          is_online: Boolean(item.is_online),
-          online_meeting_url: item.online_meeting_url,
-          venue_name: item.venues?.name || 'Main Event Venue',
-          venue_address: item.venues?.address || 'Lagos, Nigeria',
-          venue_city: item.venues?.city || 'Lagos, Nigeria',
-          venue_country: item.venues?.country || 'Nigeria',
-          organizer_name: item.organizations?.name || 'Ticketa Verified Organizer',
-          organizer_logo: item.organizations?.logo_url || 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=120&h=120&q=80',
-          organizer_description: item.organizations?.description || 'Verified event organizer on Ticketa.',
-          organizer_verified: true,
-          status: item.status,
-          ticket_types: (item.ticket_types || []).map((tt: any) => {
-            const avail = Number(tt.quantity_available !== undefined && tt.quantity_available !== null ? tt.quantity_available : 0);
-            const sold = Number(tt.quantity_sold || 0);
+      try {
+        const { data, error } = await supabase
+          .from('events')
+          .select(`
+            id,
+            title,
+            slug,
+            description,
+            banner_image_url,
+            start_time,
+            end_time,
+            is_featured,
+            is_online,
+            online_meeting_url,
+            status,
+            organization_id,
+            venue_id,
+            category_id,
+            venues (
+              name,
+              address,
+              city,
+              country
+            ),
+            event_categories (
+              name,
+              slug,
+              icon_name
+            ),
+            ticket_types (
+              id,
+              name,
+              description,
+              price,
+              currency,
+              quantity_available,
+              quantity_sold
+            )
+          `)
+          .order('start_time', { ascending: true });
+
+        if (!error && data && data.length > 0) {
+          rawData = data;
+        } else if (error) {
+          fetchError = error;
+        }
+      } catch (err) {
+        fetchError = err;
+      }
+
+      // Fallback query if joined select errored or returned empty
+      if (rawData.length === 0) {
+        try {
+          const { data: fallbackData, error: fbErr } = await supabase
+            .from('events')
+            .select('*, venues(*), event_categories(*), ticket_types(*)')
+            .order('created_at', { ascending: false });
+
+          if (!fbErr && fallbackData && fallbackData.length > 0) {
+            rawData = fallbackData;
+            fetchError = null;
+          } else {
+            const { data: rawEvents } = await supabase.from('events').select('*');
+            if (rawEvents && rawEvents.length > 0) {
+              rawData = rawEvents;
+              fetchError = null;
+            }
+          }
+        } catch (e) {
+          console.warn('Fallback event fetch notice:', e);
+        }
+      }
+
+      // If we have events, fetch missing ticket_types or venues if needed
+      if (rawData.length > 0) {
+        const eventIds = rawData.map((e) => e.id).filter(Boolean);
+
+        // Fetch ticket types for any events missing them
+        const eventsMissingTickets = rawData.filter((e) => !e.ticket_types || e.ticket_types.length === 0);
+        let extraTicketTypesByEvent: Record<string, any[]> = {};
+        if (eventsMissingTickets.length > 0 && eventIds.length > 0) {
+          try {
+            const { data: tts } = await supabase
+              .from('ticket_types')
+              .select('*')
+              .in('event_id', eventIds);
+            (tts || []).forEach((tt: any) => {
+              if (!extraTicketTypesByEvent[tt.event_id]) extraTicketTypesByEvent[tt.event_id] = [];
+              extraTicketTypesByEvent[tt.event_id].push(tt);
+            });
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        // Fetch organizations names if available
+        const orgIds = Array.from(new Set(rawData.map((e) => e.organization_id).filter(Boolean)));
+        let orgsById: Record<string, any> = {};
+        if (orgIds.length > 0) {
+          try {
+            const { data: orgs } = await supabase
+              .from('organizations')
+              .select('id, name, logo_url, description')
+              .in('id', orgIds);
+            (orgs || []).forEach((o: any) => {
+              orgsById[o.id] = o;
+            });
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        eventsList = rawData
+          .filter((item: any) => item && (item.id || item.slug))
+          .map((item: any) => {
+            const org = orgsById[item.organization_id] || item.organizations || null;
+            const tts =
+              (item.ticket_types && item.ticket_types.length > 0)
+                ? item.ticket_types
+                : (extraTicketTypesByEvent[item.id] || []);
+
+            const categoryName = item.event_categories?.name || 'Concert';
+            const categorySlug = item.event_categories?.slug || 'concert';
+            const categoryIcon = item.event_categories?.icon_name || 'Music';
+
             return {
-              id: tt.id,
-              name: tt.name,
-              description: tt.description || '',
-              price: Number(tt.price || 0),
-              currency: tt.currency || 'NGN',
-              quantity_available: avail,
-              quantity_sold: sold,
-              is_sold_out: avail <= 0 && (avail + sold > 0),
+              id: item.id,
+              title: item.title || 'Untitled Event',
+              slug: item.slug || `event-${item.id}`,
+              description: item.description || '',
+              category: categoryName,
+              category_slug: categorySlug,
+              category_icon: categoryIcon,
+              banner_image_url:
+                item.banner_image_url ||
+                'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80',
+              start_time: item.start_time || new Date().toISOString(),
+              end_time: item.end_time || new Date(Date.now() + 86400000).toISOString(),
+              is_featured: Boolean(item.is_featured),
+              is_trending: true,
+              is_online: Boolean(item.is_online),
+              online_meeting_url: item.online_meeting_url || null,
+              venue_name: item.venues?.name || item.venue_name || (item.is_online ? 'Online Event' : 'Main Event Venue'),
+              venue_address: item.venues?.address || item.venue_address || (item.is_online ? 'Virtual' : 'Lagos, Nigeria'),
+              venue_city: item.venues?.city || item.venue_city || 'Lagos',
+              venue_country: item.venues?.country || item.venue_country || 'Nigeria',
+              organizer_name: org?.name || 'Ticketa Verified Organizer',
+              organizer_logo: org?.logo_url || 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&w=120&h=120&q=80',
+              organizer_description: org?.description || 'Verified event organizer on Ticketa.',
+              organizer_verified: true,
+              status: item.status || 'PUBLISHED',
+              ticket_types: (tts && tts.length > 0)
+                ? tts.map((tt: any) => {
+                    const avail = Number(tt.quantity_available !== undefined && tt.quantity_available !== null ? tt.quantity_available : 0);
+                    const sold = Number(tt.quantity_sold || 0);
+                    return {
+                      id: tt.id,
+                      name: tt.name || 'General Admission',
+                      description: tt.description || '',
+                      price: Number(tt.price || 0),
+                      currency: tt.currency || 'NGN',
+                      quantity_available: avail,
+                      quantity_sold: sold,
+                      is_sold_out: avail <= 0 && (avail + sold > 0),
+                    };
+                  })
+                : [
+                    {
+                      id: `tt-${item.id}-default`,
+                      name: 'General Admission',
+                      description: 'Standard event admission',
+                      price: 0,
+                      currency: 'NGN',
+                      quantity_available: 100,
+                      quantity_sold: 0,
+                      is_sold_out: false,
+                    },
+                  ],
             };
-          }),
-        }));
+          });
       }
     } catch (e) {
       console.warn('Failed to fetch from Supabase:', e);
